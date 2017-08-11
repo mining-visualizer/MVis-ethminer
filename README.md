@@ -1,1 +1,1 @@
-# MVis-Ethminer
+# MVis-ethminer
