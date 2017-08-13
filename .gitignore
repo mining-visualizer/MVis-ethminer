@@ -1,3 +1,4 @@
 build/
-extdep/
+extdep/install
+extdep/download
 release/
