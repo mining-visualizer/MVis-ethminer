@@ -1,4 +1,6 @@
 build/
 extdep/install
 extdep/download
-release/
+extdep/include
+release/stage
+*.tar.gz
