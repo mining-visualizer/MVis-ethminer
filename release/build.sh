@@ -4,8 +4,8 @@ cd ../build
 
 # compile
 
-make clean
-make ethminer
+#make clean
+#make ethminer
 
 if [ $? -ge 1 ] ; then
    echo "."
@@ -23,8 +23,8 @@ cp ../ethminer.ini ../release/stage
 
 cd ../release
 
-rm MVis-ethminer.tar.gz
-tar -czf MVis-ethminer.tar.gz  --directory=stage .
+rm *.tar.gz
+tar -czf mvis-ethminer-version-linux.tar.gz  --directory=stage .
 
 if [ $? -ge 1 ] ; then
    echo "."
