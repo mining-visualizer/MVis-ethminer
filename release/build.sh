@@ -4,8 +4,8 @@ cd ../build
 
 # compile
 
-#make clean
-#make ethminer
+make clean
+make ethminer
 
 if [ $? -ge 1 ] ; then
    echo "."
