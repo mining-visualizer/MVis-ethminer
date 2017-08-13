@@ -48,7 +48,7 @@ sudo apt-get install git cmake libcryptopp-dev libleveldb-dev libjsoncpp-dev lib
 git clone https://github.com/mining-visualizer/MVis-ethminer.git <mvis_folder>
 
 - download the AMD ADL SDK from the AMD website, and extract it to a temporary folder
-- copy all 3 .h files from <adl_package>/include/ folder to <mvis_folder>/extdep/include/amd_adl/
+- copy all 3 .h files from the <adl_package>/include/ folder to <mvis_folder>/extdep/include/amd_adl/  (create subfolders as necessary)
 
 cd <mvis_folder>
 mkdir build
