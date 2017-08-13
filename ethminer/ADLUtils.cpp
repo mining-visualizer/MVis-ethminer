@@ -92,7 +92,7 @@ void ADLUtils::init()
 		ADL2_Adapter_AdapterInfo_Get(context, lpAdapterInfo, sizeof(AdapterInfo) * iNumberAdapters);
 	}
 
-	// loop through available GUPs, build a mapping structure, and log any errors.
+	// loop through available GUPs, build a mapping structure, and log any errors
 	int busNumber = -1;
 	int adapterCounter = -1;
 	for (int i = 0; i < iNumberAdapters; i++)
