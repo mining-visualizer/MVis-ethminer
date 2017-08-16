@@ -12,6 +12,8 @@ This is a fork of Genoil's ethminer-0.9.41-genoil-1.x.x, which was a fork of the
 * Positioned screen output: instead of continuously scrolling screen output, this miner displays useful data in a statically positioned fashion. ([Screenshot](https://github.com/mining-visualizer/Mining-Visualizer/wiki/Miner#screen-output))
 * Temperature & fan speed reporting.  Currently this is Windows only, but hopefully it will be available soon on Linux.
 * Hash faults: every kernel run, the CPU verifies one of the hashes computed by the GPU for correctness.  Note that his is a **much higher frequency** of checking than the original ethminer, so don't be surprised if you see higher numbers.
+* A few bug fixes and optimizations which might result in slightly higher hash rate.
+
 
 ### Download
 
@@ -24,8 +26,8 @@ Please visit the [Miner page](https://github.com/mining-visualizer/Mining-Visual
 #### Limitations ####
 
 * CUDA mining is broken.  The old code from Genoil is still there, but I don't have an NVidia device so I have not been able to modify the CUDA code to support some of the new features I have added to the miner.  Hopefully I will be able to address this in the near future, or better yet, maybe an experienced CUDA dev will step up and volunteer for this effort. :smiley:
-* Pool mining is broken.
-* GPU temperatures and fan speeds are unavailable when running under Linux.
+* Pool mining is broken.  Many of the features I have added don't really make any sense with pool mining, so it is unlikely I will expend any effort on this issue.  If someone wants to submit a PR though, I would be happy to look at it.
+* GPU temperatures and fan speeds are unavailable when running under Linux.  Hopefully support for this can be added soon.
 
 
 ### Building on Windows
