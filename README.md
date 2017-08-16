@@ -2,11 +2,13 @@
 
 This is a fork of Genoil's ethminer-0.9.41-genoil-1.x.x, which was a fork of the Ethereum Foundation ethminer.  It is part of the [Mining Visualizer](https://github.com/mining-visualizer/Mining-Visualizer) suite of programs.
 
+**Platform support** : Windows, Linux
+
 ### Distinguishing Features
 
 * Correct hash rate reporting. The original ethminer, and Genoil's as well (I don't think he made any significant changes to this part of the code), was really bad at calculating and displaying hash rates.  The numbers would jump all over the place when in fact the actual underlying hash rate was much more constant.   
 * Best hash: the miner keeps track of the best hash found since mining the last block.  In other  words, it shows the closest you have come to mining a new block.
-* Close hits: in a similar vein, the miner tracks hashes found that were within a certain range of the target.  In other words, you *almost* mined a block.  These are not actually displayed by the miner, but passed on to Mining Visualizer to be displayed on the desktop widgets, and in the web app.
+* Close hits: in a similar vein, the miner tracks hashes found that were within a certain range of the target.  In other words, you *almost* mined a block.  These are not actually displayed by the miner, but passed on to Mining Visualizer to be displayed in the desktop widgets and the web app.
 * Work Units: identical to Close Hits, but set at a much lower difficulty level (on average, about 1 every 10 minutes).  You could also compare these to the 'shares' you get with pool mining, except there is no reward.  The purpose of this is to simply show that the miner is actually working.
 * GPU throttling: if any of the GPUs get too hot, the miner will start inserting pauses in the hashing algorithm to keep the temperature down.  If the GPUs stay hot, the whole mining rig shuts down after a specified period of time.
 * Positioned screen output: instead of continuously scrolling screen output, this miner displays useful data in a statically positioned fashion. ([Screenshot](https://github.com/mining-visualizer/Mining-Visualizer/wiki/Miner#screen-output))
@@ -23,7 +25,7 @@ Binaries are are available for Windows and Linux.  Please visit the [Release pag
 
 Please visit the [Miner page](https://github.com/mining-visualizer/Mining-Visualizer/wiki/Miner) of the [MVis wiki](https://github.com/mining-visualizer/Mining-Visualizer/wiki) for full documentation.
 
-#### Limitations ####
+#### Limitations
 
 * CUDA mining is broken.  The old code from Genoil is still there, but I don't have an NVidia device so I have not been able to modify the CUDA code to support some of the new features I have added to the miner.  Hopefully I will be able to address this in the near future, or better yet, maybe an experienced CUDA dev will step up and volunteer for this effort. :smiley:
 * Pool mining is broken.  Many of the features I have added don't really make any sense with pool mining, so it is unlikely I will expend any effort on this issue.  If someone wants to submit a PR though, I would be happy to look at it.
