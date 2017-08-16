@@ -2,14 +2,31 @@
 
 This is a fork of Genoil's ethminer-0.9.41-genoil-1.x.x, which was a fork of the Ethereum Foundation ethminer.  It is part of the [Mining Visualizer](https://github.com/mining-visualizer/Mining-Visualizer) suite of programs.
 
+### Distinguishing Features
+
+* Correct hash rate reporting. The original ethminer, and Genoil's as well (I don't think he made any significant changes to this part of the code), was really bad at calculating and displaying hash rates.  The numbers would jump all over the place when in fact the actual underlying hash rate was much more constant.   
+* Best hash: the miner keeps track of the best hash found since mining the last block.  In other  words, it shows the closest you have come to mining a new block.
+* Close hits: in a similar vein, the miner tracks hashes found that were within a certain range of the target.  In other words, you *almost* mined a block.  These are not actually displayed by the miner, but passed on to Mining Visualizer to be displayed on the desktop widgets, and in the web app.
+* Work Units: identical to Close Hits, but set at a much lower difficulty level (on average, about 1 every 10 minutes).  You could also compare these to the 'shares' you get with pool mining, except there is no reward.  The purpose of this is to simply show that the miner is actually working.
+* GPU throttling: if any of the GPUs get too hot, the miner will start inserting pauses in the hashing algorithm to keep the temperature down.  If the GPUs stay hot, the whole mining rig shuts down after a specified period of time.
+* Positioned screen output: instead of continuously scrolling screen output, this miner displays useful data in a statically positioned fashion. ([Screenshot](https://github.com/mining-visualizer/Mining-Visualizer/wiki/Miner#screen-output))
+* Temperature & fan speed reporting.  Currently this is Windows only, but hopefully it will be available soon on Linux.
+* Hash faults: every kernel run, the CPU verifies one of the hashes computed by the GPU for correctness.  Note that his is a **much higher frequency** of checking than the original ethminer, so don't be surprised if you see higher numbers.
 
 ### Download
 
-Please visit the [Releases page](https://github.com/mining-visualizer/MVis-ethminer/releases) for the latest binary downloads
+Binaries are are available for Windows and Linux.  Please visit the [Release page](https://github.com/mining-visualizer/MVis-ethminer/releases) for the latest binary downloads
 
-### Usage
+### Documentation
 
 Please visit the [Miner page](https://github.com/mining-visualizer/Mining-Visualizer/wiki/Miner) of the [MVis wiki](https://github.com/mining-visualizer/Mining-Visualizer/wiki) for full documentation.
+
+#### Limitations ####
+
+* CUDA mining is broken.  The old code from Genoil is still there, but I don't have an NVidia device so I have not been able to modify the CUDA code to support some of the new features I have added to the miner.  Hopefully I will be able to address this in the near future, or better yet, maybe an experienced CUDA dev will step up and volunteer for this effort. :smiley:
+* Pool mining is broken.
+* GPU temperatures and fan speeds are unavailable when running under Linux.
+
 
 ### Building on Windows
 
@@ -48,7 +65,8 @@ sudo apt-get install git cmake libcryptopp-dev libleveldb-dev libjsoncpp-dev lib
 git clone https://github.com/mining-visualizer/MVis-ethminer.git <mvis_folder>
 
 - download the AMD ADL SDK from the AMD website, and extract it to a temporary folder
-- copy all 3 .h files from the <adl_package>/include/ folder to <mvis_folder>/extdep/include/amd_adl/  (create subfolders as necessary)
+- copy all 3 .h files from the <adl_package>/include/ folder to <mvis_folder>/extdep/include/amd_adl/  
+  (create subfolders as necessary)
 
 cd <mvis_folder>
 mkdir build
@@ -59,3 +77,12 @@ make
 
 You can then find the executable in the `build/ethminer` subfolder
 
+
+### Donations
+
+Donations will be gratefully accepted at the following addresses:
+```
+- mining-visualizer.eth
+- 0xA804e933301AA2C919D3a9834082Cddda877C205 (ETH)
+- 0x29224Be72851D7Bad619f64c2E51E8Ca5Ba1094b (ETC)
+```

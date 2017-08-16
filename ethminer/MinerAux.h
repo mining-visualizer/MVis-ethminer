@@ -556,19 +556,23 @@ public:
 	{
 		_out
 			<< " Node configuration:" << endl
-			<< "    -N, --node <host:rpc_port>  host address and RPC port of your node. (default: 127.0.0.1:8545)" << endl
-			<< "    -S, --stratum-port <port>  Stratum port of your node (default: disabled).  This implicitly" << endl
-			<< "        enables stratum mode, otherwise polling method is used to obtain work packages (ie. getWork)" << endl
+			<< "    -N, --node <host:rpc_port>  Host address and RPC port of your node. (default: 127.0.0.1:8545)" << endl
+			<< "    -S, --stratum-port <port>  Stratum port of your node (default: disabled).  Setting this option" << endl
+			<< "        implicitly enables stratum mode, otherwise polling method is used to obtain work packages (ie. getWork)" << endl
 			<< "    -P, --stratum-pwd <string>  Stratum password (default: disabled)" << endl
-			<< "    -N2, --node2 <host:rpc_port>  failover node (default: disabled)" << endl
+			<< "    -N2, --node2 <host:rpc_port>  Failover node (default: disabled)" << endl
 			<< "    -S2, --stratum-port2 <port>  Stratum port of failover node (default: disabled)" << endl
 			<< "    -P2, --stratum-pwd2 <string>  Stratum password of failover node (default: disabled)" << endl
-			<< "    -I, --polling-interval <n>  Poll node for new work every <n> milliseconds (default: 200 milliseconds). Does not apply to stratum mode (-S)." << endl
-			<< "    --work-timeout <n> Reconnect/failover after n seconds of working on the same (stratum) job. Defaults to 180. Don't set lower than max. avg. block time" << endl
+			<< "    -I, --polling-interval <n>  If using getWork (polling) to obtain work packages, check for new work" << endl
+			<< "        every <n> milliseconds (default: 200). Does not apply to stratum mode (-S)." << endl
+			<< "    --work-timeout <n> In stratum mode, if more than <n> seconds go by with no new work package, attempt" << endl
+			<< "        to reconnect, or, if a failover node is available, switch to the failover.  Defaults to 180. Don't" << endl
+			<< "        set lower than max. avg. block time" << endl
 			<< "    -R, --farm-retries <n> Number of retries until switch to failover (default: 4)" << endl
 			<< endl
 			<< " Benchmarking mode:" << endl
-			<< "    -M [<n>],--benchmark [<n>] Benchmark for mining and exit; Optionally specify block number to benchmark against specific DAG." << endl
+			<< "    -M [<n>],--benchmark [<n>] Benchmark for mining and exit; Optionally specify block number to benchmark" << endl
+			<< "        against specific DAG." << endl
 			<< "    --benchmark-warmup <seconds>  Set the duration of warmup for the benchmark tests (default: 8)." << endl
 			<< "    --benchmark-trial <seconds>  Set the duration for each trial for the benchmark tests (default: 3)." << endl
 			<< "    --benchmark-trials <n>  Set the number of benchmark tests (default: 5)." << endl
@@ -592,7 +596,8 @@ public:
 			<< "            single <n>  - generate DAG on device n, then copy to other devices" << endl
 			<< "    --cl-extragpu-mem <n> Set the memory (in MB) you believe your GPU requires for stuff other than mining. default: 0" << endl
 			<< "    --cl-local-work <n> Set the OpenCL local work size. Default is " << toString(ethash_cl_miner::c_defaultLocalWorkSize) << endl
-			<< "    --cl-work-multiplier <n> This setting times cl-local-work equals the number of hashes computed per kernel run (ie. global work size). (Default: " << toString(ethash_cl_miner::c_defaultWorkSizeMultiplier) << ")" << endl
+			<< "    --cl-work-multiplier <n> This setting times cl-local-work equals the number of hashes computed per kernel run (ie. global " << endl
+			<< "       work size). (Default: " << toString(ethash_cl_miner::c_defaultWorkSizeMultiplier) << ")" << endl
 #if ETH_ETHASHCUDA
 			<< "    --cuda-extragpu-mem Set the memory (in MB) you believe your GPU requires for stuff other than mining. Windows rendering e.t.c.." << endl
 			<< "    --cuda-block-size Set the CUDA block work size. Default is " << toString(ethash_cuda_miner::c_defaultBlockSize) << endl

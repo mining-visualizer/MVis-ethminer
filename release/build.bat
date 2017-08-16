@@ -5,7 +5,7 @@ REM the expression %~dp0 returns the drive and folder in which this batch file i
 cd %~dp0
 
 
-REM "C:\Program Files (x86)\MSBuild\14.0\Bin\MSBuild.exe" /m:3 "..\build\MVis-ethminer.sln" /t:Rebuild /p:Configuration=Release
+"C:\Program Files (x86)\MSBuild\14.0\Bin\MSBuild.exe" /m:3 "..\build\MVis-ethminer.sln" /t:Rebuild /p:Configuration=Release
 IF ERRORLEVEL 1 GOTO ERROR
 
 
@@ -19,7 +19,7 @@ copy "..\build\ethminer\release\libmicrohttpd-dll.dll" stage\ethminer
 copy "..\build\ethminer\release\OpenCL.dll" stage\ethminer
 
 del *.zip
-powershell.exe -nologo -noprofile -command "& { Add-Type -A 'System.IO.Compression.FileSystem'; [IO.Compression.ZipFile]::CreateFromDirectory('stage', 'ethminer-win64.zip'); }"
+powershell.exe -nologo -noprofile -command "& { Add-Type -A 'System.IO.Compression.FileSystem'; [IO.Compression.ZipFile]::CreateFromDirectory('stage', 'mvis-ethminer-ver-win64.zip'); }"
 
 echo.
 echo.
