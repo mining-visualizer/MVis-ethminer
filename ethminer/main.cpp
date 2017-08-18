@@ -93,6 +93,7 @@ void help()
 		<< " Options:" << endl << endl;
 	MinerCLI::streamHelp(cout);
 	cout
+		<< endl
 		<< " General Options:" << endl
 		<< "    -V,--version  Show the version and exit." << endl
 		<< "    -h,--help  Show this help message and exit." << endl

@@ -580,6 +580,9 @@ public:
 			<< " Mining configuration:" << endl
 			<< "    -C,--cpu  CPU mining" << endl
 			<< "    -G,--opencl  When mining use the GPU via OpenCL." << endl
+			<< "    --cl-local-work <n> Set the OpenCL local work size. Default is " << toString(ethash_cl_miner::c_defaultLocalWorkSize) << endl
+			<< "    --cl-work-multiplier <n> This setting times cl-local-work equals the number of hashes computed per kernel run (ie. global " << endl
+			<< "       work size). (Default: " << toString(ethash_cl_miner::c_defaultWorkSizeMultiplier) << ")" << endl
 #if ETH_ETHASHCUDA
 			<< "    -U,--cuda  When mining use the GPU via CUDA." << endl
 			<< "    -X,--cuda-opencl Use OpenCL + CUDA in a system with mixed AMD/Nvidia cards. May require setting --opencl-platform 1" << endl
@@ -595,9 +598,6 @@ public:
 			<< "            sequential  - load DAG on GPUs one after another. Use this when the miner crashes during DAG generation" << endl
 			<< "            single <n>  - generate DAG on device n, then copy to other devices" << endl
 			<< "    --cl-extragpu-mem <n> Set the memory (in MB) you believe your GPU requires for stuff other than mining. default: 0" << endl
-			<< "    --cl-local-work <n> Set the OpenCL local work size. Default is " << toString(ethash_cl_miner::c_defaultLocalWorkSize) << endl
-			<< "    --cl-work-multiplier <n> This setting times cl-local-work equals the number of hashes computed per kernel run (ie. global " << endl
-			<< "       work size). (Default: " << toString(ethash_cl_miner::c_defaultWorkSizeMultiplier) << ")" << endl
 #if ETH_ETHASHCUDA
 			<< "    --cuda-extragpu-mem Set the memory (in MB) you believe your GPU requires for stuff other than mining. Windows rendering e.t.c.." << endl
 			<< "    --cuda-block-size Set the CUDA block work size. Default is " << toString(ethash_cuda_miner::c_defaultBlockSize) << endl
@@ -616,7 +616,7 @@ public:
 			<< "    --verify-dag      - Spot check DAG entries " << endl
 			<< "    --config <FileSpec>  - Full path to an INI file containing program options. Windows default: %LocalAppData%/ethminer/ethminer.ini " << endl
 			<< "                           Linux default: $HOME/.config/ethminer/ethminer.ini.  If this option is specified,  it must appear before " << endl
-			<< "                           all others."
+			<< "                           all others." << endl
 			;
 	}	// streamHelp
 

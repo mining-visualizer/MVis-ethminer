@@ -1,6 +1,6 @@
 ## MVis-ethminer
 
-This is a fork of Genoil's ethminer-0.9.41-genoil-1.x.x, which was a fork of the Ethereum Foundation ethminer.  It is part of the [Mining Visualizer](https://github.com/mining-visualizer/Mining-Visualizer) suite of programs.
+This is a fork of Genoil's ethminer-0.9.41-genoil-1.x.x, which was a fork of the Ethereum Foundation ethminer.  It is part of the [Mining Visualizer](https://github.com/mining-visualizer/Mining-Visualizer) suite of programs, and as such the main emphasis is on solo mining.  Pool mining is currently not supported.
 
 **Platform support** : Windows, Linux
 
@@ -8,12 +8,13 @@ This is a fork of Genoil's ethminer-0.9.41-genoil-1.x.x, which was a fork of the
 
 * Correct hash rate reporting. The original ethminer, and Genoil's as well (I don't think he made any significant changes to this part of the code), was really bad at calculating and displaying hash rates.  The numbers would jump all over the place when in fact the actual underlying hash rate was much more constant.   
 * Best hash: the miner keeps track of the best hash found since mining the last block.  In other  words, it shows the closest you have come to mining a new block.
-* Close hits: in a similar vein, the miner tracks hashes found that were within a certain range of the target.  In other words, you *almost* mined a block.  These are not actually displayed by the miner, but passed on to Mining Visualizer to be displayed in the desktop widgets and the web app.
-* Work Units: identical to Close Hits, but set at a much lower difficulty level (on average, about 1 every 10 minutes).  You could also compare these to the 'shares' you get with pool mining, except there is no reward.  The purpose of this is to simply show that the miner is actually working.
-* GPU throttling: if any of the GPUs get too hot, the miner will start inserting pauses in the hashing algorithm to keep the temperature down.  If the GPUs stay hot, the whole mining rig shuts down after a specified period of time.
-* Positioned screen output: instead of continuously scrolling screen output, this miner displays useful data in a statically positioned fashion. ([Screenshot](https://github.com/mining-visualizer/Mining-Visualizer/wiki/Miner#screen-output))
-* Temperature & fan speed reporting.  Currently this is Windows only, but hopefully it will be available soon on Linux.
-* Hash faults: every kernel run, the CPU verifies one of the hashes computed by the GPU for correctness.  Note that his is a **much higher frequency** of checking than the original ethminer, so don't be surprised if you see higher numbers.
+* Close hits: in a similar vein, the miner tracks hashes found that were within a certain range of the target.  These are not actually displayed by the miner, but passed on to Mining Visualizer to be displayed in the desktop widgets and the web app.
+* Work Units: identical to Close Hits, but set at a much lower difficulty level (on average, about 1 every 10 minutes).  You could compare these to the *shares* you get with pool mining, except there is no reward.  The purpose of this is simply to show that the miner is actually working.
+* GPU throttling: if any of the GPUs get too hot, the miner will start inserting pauses in the hashing algorithm to keep the temperature down.  If that proves ineffective, the whole mining rig shuts down after a specified period of time.
+* Positioned screen output: as opposed to continuously scrolling screen output. ([Screenshot](https://github.com/mining-visualizer/Mining-Visualizer/wiki/Miner#screen-output))
+* Temperature & fan speed reporting.  Currently this is available only on Windows, but support for Linux should be coming soon.
+* Hash faults: every kernel run, the CPU verifies one of the hashes computed by the GPU for correctness.  Note that this is a **much higher frequency** of checking than the original ethminer, so don't be surprised if you see higher numbers.
+* MinerRPC: a RPC-UDP protocol was implemented to allow the miner to talk to Mining Visualizer.
 * A few bug fixes and optimizations which might result in slightly higher hash rate.
 
 
