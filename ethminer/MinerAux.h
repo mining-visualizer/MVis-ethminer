@@ -581,8 +581,8 @@ public:
 			<< "    -C,--cpu  CPU mining" << endl
 			<< "    -G,--opencl  When mining use the GPU via OpenCL." << endl
 			<< "    --cl-local-work <n> Set the OpenCL local work size. Default is " << toString(ethash_cl_miner::c_defaultLocalWorkSize) << endl
-			<< "    --cl-work-multiplier <n> This setting times cl-local-work equals the number of hashes computed per kernel run (ie. global " << endl
-			<< "       work size). (Default: " << toString(ethash_cl_miner::c_defaultWorkSizeMultiplier) << ")" << endl
+			<< "    --cl-work-multiplier <n> This value multiplied by the cl-local-work value equals the number of hashes computed per kernel " << endl
+			<< "       run (ie. global work size). (Default: " << toString(ethash_cl_miner::c_defaultWorkSizeMultiplier) << ")" << endl
 #if ETH_ETHASHCUDA
 			<< "    -U,--cuda  When mining use the GPU via CUDA." << endl
 			<< "    -X,--cuda-opencl Use OpenCL + CUDA in a system with mixed AMD/Nvidia cards. May require setting --opencl-platform 1" << endl
