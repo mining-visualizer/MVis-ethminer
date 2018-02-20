@@ -26,10 +26,12 @@
 #include <chrono>
 #include <boost/algorithm/string.hpp>
 #include <random>
+#include <libethash/sha3_cryptopp.h>
 #if ETH_CPUID || !ETH_TRUE
 #define HAVE_STDINT_H
 #include <libcpuid/libcpuid.h>
 #endif
+
 using namespace std;
 using namespace dev;
 using namespace eth;
@@ -75,47 +77,29 @@ void EthashCPUMiner::pause()
 	stopWorking();
 }
 
-void EthashCPUMiner::workLoop()
-{
+void EthashCPUMiner::workLoop() {
 	LogF << "Trace: EthashCPUMiner::workLoop";
-	uint64_t const c_maxHash = ~uint64_t(0);
 
-	auto tid = std::this_thread::get_id();
-	static std::mt19937_64 s_eng((time(0) + std::hash<decltype(tid)>()(tid)));
-	uint64_t bestHash = c_maxHash;
-
-	uint64_t tryNonce = s_eng();
-
-	WorkPackage w = work();
-
-	h256 boundary = w.boundary;
+	Timer batchTime;
 	unsigned hashCount = 1;
 	uint64_t batchCount = 0;
-	Timer batchTime;
+	h256 nonce = h256::random();
+	h256 hash;
+	h160 sender("0x8940C61831C3A2ba1Fb9e50f27260B5b5Af1A3EB");
+	std::vector<byte> mix(84);
+	memcpy(&mix[0], challenge.data(), 32);
+	memcpy(&mix[32], sender.data(), 20);
+	memcpy(&mix[52], nonce.data(), 32);
+	h256* noncePtr = (h256*) &mix[52];
 
 	m_farm->setIsMining(true);
-	
-	for (; !shouldStop(); tryNonce++, hashCount++)
-	{
-		Nonce n = (Nonce) (u64) tryNonce;
-		EthashProofOfWork::Result r = EthashAux::eval(w.seedHash, w.headerHash, n);
-		if (r.value < w.boundary && submitProof(Solution{n, r.mixHash}))
+
+	for (; !shouldStop(); hashCount++, ++(*noncePtr)) {
+		SHA3_256((const ethash_h256_t*) &hash, (const uint8_t*) mix.data(), 84);
+		if (hash < target && submitProof(*noncePtr))
 			break;
 
-		m_currentHash = upper64OfHash(r.value);
-
-		if (m_currentHash < bestHash)
-			setBestHash(m_currentHash);
-
-		if (m_closeHit > 0 && m_currentHash < m_closeHit)
-		{
-			unsigned work = std::chrono::duration_cast<std::chrono::seconds>(SteadyClock::now() - m_lastCloseHit).count();
-			m_farm->reportCloseHit(m_currentHash, work, m_index);
-			m_lastCloseHit = SteadyClock::now();
-		}
-
-		if (batchTime.elapsedMilliseconds() > 100)
-		{
+		if (batchTime.elapsedMilliseconds() > 100) {
 			accumulateHashes(hashCount, batchCount++);
 			batchTime.restart();
 			hashCount = 1;

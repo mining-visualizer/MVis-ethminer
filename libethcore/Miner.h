@@ -286,6 +286,32 @@ public:
 		calcWorkUnitThreshold();
 	}
 
+	void setWork_token(h256 _challenge, h256 _target) 
+	{
+		LogF << "Trace: GenericMiner::setWork, miner[" << m_index << "]";
+		auto old = challenge;
+		{
+			Guard l(x_work);
+			challenge = _challenge;
+			target = _target;
+		}
+		if (_challenge) {
+			DEV_TIMED_ABOVE("pause", 250)
+				pause();
+			DEV_TIMED_ABOVE("kickOff", 250)
+				kickOff();
+		} else if (_challenge == h256(0) && old != h256(0))
+			pause();
+
+		if (m_index == 0)
+			// clear out the nonces. only one miner needs to do this.
+			storeNonceIndex(0, true);
+
+		//  we'll use this as a convenient place to recalculate our work unit threshold periodically
+		calcWorkUnitThreshold();
+	}
+
+
 	void calcWorkUnitThreshold()
 	{
 		// calculate a threshold for work units. MVis gives us the desired number of 
@@ -510,6 +536,24 @@ protected:
 		return false;
 	}
 
+	/**
+	* @brief Notes that the Miner found a solution.
+	* @param _s The solution.
+	* @return true if the solution was correct and that the miner should pause.
+	*/
+	bool submitProof(h256 _nonce) 
+	{
+		LogF << "Trace: GenericMiner::submitProof, miner[" << m_index << "]";
+		if (!m_farm)
+			return true;
+		if (m_farm->submitProof(_nonce, this)) {
+			Guard l(x_work);
+			//m_work.reset();
+			challenge.clear();
+			return true;
+		}
+		return false;
+	}
 
 
 	mutable SharedMutex x_hashVal;
@@ -526,6 +570,8 @@ protected:
 	unsigned m_index;		// zero-based
 	unsigned m_device;
 
+	h256 challenge, target;
+
 private:
 
 	mutable SharedMutex x_hashRates;
@@ -536,7 +582,7 @@ private:
 
 	WorkPackage m_work;
 	mutable Mutex x_work;
-	
+
 	bool m_dagLoaded = false;
 	std::string m_tempSource;
 

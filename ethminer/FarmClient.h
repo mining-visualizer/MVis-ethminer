@@ -6,6 +6,7 @@
 #define JSONRPC_CPP_STUB_FARMCLIENT_H_
 
 #include <jsonrpccpp/client.h>
+#include <libethash/sha3_cryptopp.h>
 
 class FarmClient : public jsonrpc::Client
 {
@@ -22,7 +23,96 @@ class FarmClient : public jsonrpc::Client
             else
                 throw jsonrpc::JsonRpcException(jsonrpc::Errors::ERROR_CLIENT_INVALID_RESPONSE, result.toStyledString());
         }
-        bool eth_submitWork(const std::string& param1, const std::string& param2, const std::string& param3) throw (jsonrpc::JsonRpcException)
+
+		void eth_getWork_token(h256& _challenge, h256& _target) throw (jsonrpc::JsonRpcException)
+		{
+			// challenge
+			Json::Value p;
+			p["from"] = "0x8940C61831C3A2ba1Fb9e50f27260B5b5Af1A3EB";	// ETH address (Jaxx HD)
+			p["to"] = "0xb6ed7644c69416d67b522e20bc294a9a9b405b31";		// 0xbitcoin contract address
+			h256 bMethod = sha3("getChallengeNumber()");
+			std::string sMethod = toHex(bMethod, dev::HexPrefix::Add);
+			p["data"] = sMethod.substr(0, 10);
+
+			Json::Value data;
+			data.append(p);
+			data.append("latest");
+
+			Json::Value result = this->CallMethod("eth_call", data);
+			if (result.isString()) {
+				_challenge = h256(result.asString());
+			}
+			else
+				throw jsonrpc::JsonRpcException(jsonrpc::Errors::ERROR_CLIENT_INVALID_RESPONSE, result.toStyledString());
+
+			// target
+			bMethod = sha3("getMiningTarget()");
+			sMethod = toHex(bMethod, dev::HexPrefix::Add);
+			p["data"] = sMethod.substr(0, 10);
+
+			data.clear();
+			data.append(p);
+			data.append("latest");
+
+			result = this->CallMethod("eth_call", data);
+			if (result.isString()) {
+				_target = h256(result.asString());
+			} else
+				throw jsonrpc::JsonRpcException(jsonrpc::Errors::ERROR_CLIENT_INVALID_RESPONSE, result.toStyledString());
+
+		}
+
+		void testHash()  throw (jsonrpc::JsonRpcException)
+		{
+			std::ostringstream ss;
+			Json::Value p;
+			p["from"] = "0x8940C61831C3A2ba1Fb9e50f27260B5b5Af1A3EB";	// ETH address (Jaxx HD)
+			p["to"] = "0xb6ed7644c69416d67b522e20bc294a9a9b405b31";		// 0xbitcoin contract address
+			h256 bMethod = sha3("getMintDigest(uint256,bytes32,bytes32)");
+			std::string sMethod = toHex(bMethod, dev::HexPrefix::Add);
+			sMethod = sMethod.substr(0, 10);
+
+			h256 nonce = h256::random();
+			ss << std::setw(64) << std::setfill('0') << nonce.hex();
+			std::string s2(ss.str());
+
+			sMethod = sMethod + s2;
+			
+			// unused parameter
+			sMethod = sMethod + s2;
+
+			h256 challenge = h256::random();
+			ss = std::ostringstream();
+			ss << std::setw(64) << std::setfill('0') << challenge.hex();
+			s2 = std::string(ss.str());
+			sMethod = sMethod + s2;
+
+			p["data"] = sMethod;
+
+			Json::Value data;
+			data.append(p);
+			data.append("latest");
+
+			Json::Value result = this->CallMethod("eth_call", data);
+			if (result.isString()) {
+				LogS << "test hash";
+				LogS << result.asString();
+
+				h160 sender("0x8940C61831C3A2ba1Fb9e50f27260B5b5Af1A3EB");
+				std::vector<byte> mix(84);
+				memcpy(&mix[0], challenge.data(), 32);
+				memcpy(&mix[32], sender.data(), 20);
+				memcpy(&mix[52], nonce.data(), 32);
+				h256 hash[2];
+				SHA3_256((const ethash_h256_t*) hash, (const uint8_t*) mix.data(), 84);
+				LogS << "0x" << hash[0];
+				LogS << "end test";
+
+			} else
+				throw jsonrpc::JsonRpcException(jsonrpc::Errors::ERROR_CLIENT_INVALID_RESPONSE, result.toStyledString());
+		}
+
+		bool eth_submitWork(const std::string& param1, const std::string& param2, const std::string& param3) throw (jsonrpc::JsonRpcException)
         {
             Json::Value p;
             p.append(param1);
@@ -34,6 +124,16 @@ class FarmClient : public jsonrpc::Client
             else
                 throw jsonrpc::JsonRpcException(jsonrpc::Errors::ERROR_CLIENT_INVALID_RESPONSE, result.toStyledString());
         }
+
+		bool eth_submitWorkToken(h256 _nonce, h256 _challenge) throw (jsonrpc::JsonRpcException) {
+			Json::Value p;
+			Json::Value result = this->CallMethod("eth_submitWork", p);
+			if (result.isBool())
+				return result.asBool();
+			else
+				throw jsonrpc::JsonRpcException(jsonrpc::Errors::ERROR_CLIENT_INVALID_RESPONSE, result.toStyledString());
+		}
+
         bool eth_submitHashrate(const std::string& param1, const std::string& param2) throw (jsonrpc::JsonRpcException)
         {
             Json::Value p;
@@ -45,6 +145,7 @@ class FarmClient : public jsonrpc::Client
             else
                 throw jsonrpc::JsonRpcException(jsonrpc::Errors::ERROR_CLIENT_INVALID_RESPONSE, result.toStyledString());
         }
+
         Json::Value eth_awaitNewWork() throw (jsonrpc::JsonRpcException)
         {
             Json::Value p;
@@ -55,6 +156,7 @@ class FarmClient : public jsonrpc::Client
             else
                 throw jsonrpc::JsonRpcException(jsonrpc::Errors::ERROR_CLIENT_INVALID_RESPONSE, result.toStyledString());
         }
+
         bool eth_progress() throw (jsonrpc::JsonRpcException)
         {
             Json::Value p;
@@ -65,6 +167,7 @@ class FarmClient : public jsonrpc::Client
             else
                 throw jsonrpc::JsonRpcException(jsonrpc::Errors::ERROR_CLIENT_INVALID_RESPONSE, result.toStyledString());
         }
+
 };
 
 #endif //JSONRPC_CPP_STUB_FARMCLIENT_H_

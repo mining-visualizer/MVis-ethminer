@@ -56,6 +56,7 @@ public:
 	using Miner = GenericMiner<PoW>;
 
 	using SolutionFound = std::function<bool(Solution const&, int)>;
+	using SolutionFoundToken = std::function<bool(h256 const&, int)>;
 	using BestHashFn = boost::function<void(uint64_t const)>;
 	using SetWorkFn = boost::function<void(uint64_t const)>;
 	using SolutionProcessedFn = boost::function<bool(unsigned, SolutionState, bool, int)>;
@@ -195,6 +196,25 @@ public:
 
 
 	/*-----------------------------------------------------------------------------------
+	* setWork_token
+	*----------------------------------------------------------------------------------*/
+	void setWork_token(h256 _challenge, h256 _target)
+	{
+		LogF << "Trace: GenericFarm::setWork";
+		if (m_onSetWork)
+			m_onSetWork(upper64OfHash(_target));
+
+		WriteGuard l(x_minerWork);
+		if (_challenge == challenge)
+			return;
+		challenge = _challenge;
+		target = _target;
+		for (auto const& m: m_miners)
+			m->setWork_token(challenge, target);
+	}
+
+
+	/*-----------------------------------------------------------------------------------
 	* setWork
 	*----------------------------------------------------------------------------------*/
 	void setWork(WorkPackage const& _wp)
@@ -209,7 +229,7 @@ public:
 		m_work = _wp;
 		for (auto const& m: m_miners)
 			m->setWork(m_work);
-	}	
+    }
 
 
 	/*-----------------------------------------------------------------------------------
@@ -444,6 +464,17 @@ public:
 
 
 	/*-----------------------------------------------------------------------------------
+	* onSolutionFoundToken
+	*----------------------------------------------------------------------------------*/
+	void onSolutionFoundToken(SolutionFoundToken const& _handler) {
+		// set a handler for the solution found event.  typically a lambda expression in
+		// the main loop.  this event signifies that a miner has found a solution, but it
+		// has not been confirmed by the node / mining pool.
+		m_onSolutionFoundToken = _handler;
+	}
+
+
+	/*-----------------------------------------------------------------------------------
 	* solutionFound
 	*----------------------------------------------------------------------------------*/
 	void solutionFound(SolutionState _state, bool _stale, int _miner)
@@ -661,6 +692,34 @@ public:
 	}
 
 
+	/**
+	* @brief Called from a Miner to note a WorkPackage has a solution.
+	* @return true if the solution was good and the Farm should pause until more work is submitted.
+	*/
+	/*-----------------------------------------------------------------------------------
+	* submitProof
+	*----------------------------------------------------------------------------------*/
+	bool submitProof(h256 _nonce, Miner* _m) 
+	{
+		// a miner is notifying us it found a solution.  we in turn notify the main loop 
+		// (typically a lambda expression) which submits the solution to the node. the main
+		// loop will call us back on solutionFound to let us know if the solution was accepted.
+		LogF << "Trace: GenericFarm.submitProof";
+		if (m_onSolutionFoundToken && m_onSolutionFoundToken(_nonce, _m->index())) {
+			if (x_minerWork.try_lock()) {
+				//for (auto const& m : m_miners)
+				//	if (m != _m)
+				//		m->setWork();
+				challenge.clear();
+				x_minerWork.unlock();
+				return true;
+			}
+		}
+		return false;
+	}
+
+
+
 public:
 	unsigned currentBlock;
 	DataLogger logger;
@@ -681,6 +740,7 @@ private:
 	mutable SharedMutex x_minerWork;
 	miners_t m_miners;
 	WorkPackage m_work;
+	h256 challenge, target;
 
 	std::atomic<bool> m_isMining = {false};
 
@@ -689,6 +749,7 @@ private:
 
 	// event functions
 	SolutionFound m_onSolutionFound;
+	SolutionFoundToken m_onSolutionFoundToken;
 	BestHashFn m_onBestHash;
 	SetWorkFn m_onSetWork;	
 	SolutionProcessedFn m_onSolutionProcessed;

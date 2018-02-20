@@ -760,22 +760,25 @@ private:
 		mvisRPC->configNodeRPC(_nodeURL + ":" + _rpcPort);
 
 		EthashProofOfWork::WorkPackage current, previous;
+		h256 challenge, target;
+		challenge.clear();
+
 		while (true)
 		{
 			try
 			{
 				bool solutionFound = false;
-				EthashProofOfWork::Solution solution;
+				h256 solution;
 				int solutionMiner;
-				f.onSolutionFound([&] (EthashProofOfWork::Solution sol, int miner) {
-					solution = sol;
+				f.onSolutionFoundToken([&] (h256 nonce, int miner) {
+					solution = nonce;
 					solutionMiner = miner;
 					return solutionFound = true;
 				});
 
 				while (!solutionFound && !f.shutDown)
 				{
-					if (current)
+					if (challenge != h256(0))
 					{
 						if (lastHashRateDisplay.elapsedSeconds() >= 2.0 && f.isMining())
 						{
@@ -784,30 +787,28 @@ private:
 						}
 					}
 
-					Json::Value v = rpc.eth_getWork();
+					h256 _challenge, _target;
+					rpc.eth_getWork_token(_challenge, _target);
+					//LogS << _challenge;
+					//LogS << _target;
+
 					if (!connectedToNode)
 					{
 						connectedToNode = true;
 						LogS << "Connection established.";
 					}
-					h256 hh(v[0].asString());
-					h256 newSeedHash(v[1].asString());
 					farmRetries = 0;
 
-					if (hh != current.headerHash)
+					if (_challenge != challenge)
 					{
 						try
 						{
 							f.currentBlock = mvisRPC->getBlockNumber() + 1;
 						}
 						catch (...) {}
-						previous.headerHash = current.headerHash;
-						previous.seedHash = current.seedHash;
-						previous.boundary = current.boundary;
-						current.headerHash = hh;
-						current.seedHash = newSeedHash;
-						current.boundary = h256(fromHex(v[2].asString()), h256::AlignRight);
-						f.setWork(current);
+						challenge = _challenge;
+						target = _target;
+						f.setWork_token(challenge, target);
 						lastBlockTime.restart();
 					}
 
@@ -825,21 +826,12 @@ private:
 					break;
 
 				LogB << "Solution found; Submitting to node ...";
-				if (EthashAux::eval(current.seedHash, current.headerHash, solution.nonce).value < current.boundary)
-				{
-					bool ok = rpc.eth_submitWork("0x" + toString(solution.nonce), "0x" + toString(current.headerHash), "0x" + toString(solution.mixHash));
-					f.solutionFound(ok ? SolutionState::Accepted : SolutionState::Rejected, false, solutionMiner);
-				}
-				else if (EthashAux::eval(previous.seedHash, previous.headerHash, solution.nonce).value < previous.boundary)
-				{
-					bool ok = rpc.eth_submitWork("0x" + toString(solution.nonce), "0x" + toString(previous.headerHash), "0x" + toString(solution.mixHash));
-					f.solutionFound(ok ? SolutionState::Accepted : SolutionState::Rejected, true, solutionMiner);
-				}
-				else
-				{
-					f.solutionFound(SolutionState::Failed, NULL, solutionMiner);
-				}
-				current.reset();
+
+				bool ok = rpc.eth_submitWorkToken(solution, challenge);
+				f.solutionFound(ok ? SolutionState::Accepted : SolutionState::Rejected, false, solutionMiner);
+
+				//current.reset();
+				challenge.clear();
 			}
 			catch (jsonrpc::JsonRpcException& e)
 			{
