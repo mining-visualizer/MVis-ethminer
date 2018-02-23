@@ -289,7 +289,7 @@ public:
 		calcWorkUnitThreshold();
 	}
 
-	void setWork_token(h256 _challenge, h256 _target) 
+	void setWork_token(bytes _challenge, h256 _target) 
 	{
 		LogF << "Trace: GenericMiner::setWork, miner[" << m_index << "]";
 		auto old = challenge;
@@ -298,12 +298,12 @@ public:
 			challenge = _challenge;
 			target = _target;
 		}
-		if (_challenge) {
+		if (!_challenge.empty()) {
 			DEV_TIMED_ABOVE("pause", 250)
 				pause();
 			DEV_TIMED_ABOVE("kickOff", 250)
 				kickOff();
-		} else if (_challenge == h256(0) && old != h256(0))
+		} else if (_challenge.empty() && !old.empty())
 			pause();
 
 		if (m_index == 0)
@@ -573,7 +573,8 @@ protected:
 	unsigned m_index;		// zero-based
 	unsigned m_device;
 
-	h256 challenge, target;
+	h256 target;
+	bytes challenge;
 
 private:
 

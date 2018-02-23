@@ -198,7 +198,7 @@ public:
 	/*-----------------------------------------------------------------------------------
 	* setWork_token
 	*----------------------------------------------------------------------------------*/
-	void setWork_token(h256 _challenge, h256 _target)
+	void setWork_token(bytes _challenge, h256 _target)
 	{
 		LogF << "Trace: GenericFarm::setWork";
 		if (m_onSetWork)
@@ -740,7 +740,8 @@ private:
 	mutable SharedMutex x_minerWork;
 	miners_t m_miners;
 	WorkPackage m_work;
-	h256 challenge, target;
+	h256 target;
+	bytes challenge;
 
 	std::atomic<bool> m_isMining = {false};
 

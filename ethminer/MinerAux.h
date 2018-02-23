@@ -760,10 +760,10 @@ private:
 		mvisRPC->configNodeRPC(_nodeURL + ":" + _rpcPort);
 
 		EthashProofOfWork::WorkPackage current, previous;
-		h256 challenge, target;
-		challenge.clear();
+		h256 target;
+		bytes challenge;
 
-		rpc.testSubmitSolution();
+		rpc.testHash();
 
 		while (true)
 		{
@@ -780,7 +780,7 @@ private:
 
 				while (!solutionFound && !f.shutDown)
 				{
-					if (challenge != h256(0))
+					if (!challenge.empty())
 					{
 						if (lastHashRateDisplay.elapsedSeconds() >= 2.0 && f.isMining())
 						{
@@ -789,7 +789,8 @@ private:
 						}
 					}
 
-					h256 _challenge, _target;
+					h256 _target;
+					bytes _challenge;
 					rpc.eth_getWork_token(_challenge, _target);
 					//LogS << _challenge;
 					//LogS << _target;
@@ -803,6 +804,7 @@ private:
 
 					if (_challenge != challenge)
 					{
+						LogS << "New challenge : " << toHex(_challenge);
 						try
 						{
 							f.currentBlock = mvisRPC->getBlockNumber() + 1;
@@ -829,10 +831,10 @@ private:
 
 				LogB << "Solution found; Submitting to node ...";
 				LogS << "nonce=" << toString(solution);
-				LogS << "challenge=" << challenge;
+				LogS << "challenge=" << toHex(challenge);
 
-				//bool ok = rpc.eth_submitWorkToken(solution, challenge);
-				//f.solutionFound(ok ? SolutionState::Accepted : SolutionState::Rejected, false, solutionMiner);
+				bool ok = rpc.eth_submitWorkToken(solution, challenge);
+				f.solutionFound(ok ? SolutionState::Accepted : SolutionState::Rejected, false, solutionMiner);
 
 				challenge.clear();
 			}
