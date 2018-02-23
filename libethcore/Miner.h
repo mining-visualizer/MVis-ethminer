@@ -57,6 +57,9 @@
 #define TEMP_SOURCE_SPEEDFAN	"speedfan"
 
 
+//#define MINER_ACCOUNT "0x8940C61831C3A2ba1Fb9e50f27260B5b5Af1A3EB"		// ETH
+#define MINER_ACCOUNT "0xAD2B2A9B8849A903d2Ca521C826c1Ffd4c29fCFF"		// ETC
+
 using namespace std;
 
 typedef struct {

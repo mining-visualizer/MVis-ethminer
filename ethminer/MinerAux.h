@@ -763,6 +763,8 @@ private:
 		h256 challenge, target;
 		challenge.clear();
 
+		rpc.testSubmitSolution();
+
 		while (true)
 		{
 			try
@@ -826,11 +828,12 @@ private:
 					break;
 
 				LogB << "Solution found; Submitting to node ...";
+				LogS << "nonce=" << toString(solution);
+				LogS << "challenge=" << challenge;
 
-				bool ok = rpc.eth_submitWorkToken(solution, challenge);
-				f.solutionFound(ok ? SolutionState::Accepted : SolutionState::Rejected, false, solutionMiner);
+				//bool ok = rpc.eth_submitWorkToken(solution, challenge);
+				//f.solutionFound(ok ? SolutionState::Accepted : SolutionState::Rejected, false, solutionMiner);
 
-				//current.reset();
 				challenge.clear();
 			}
 			catch (jsonrpc::JsonRpcException& e)

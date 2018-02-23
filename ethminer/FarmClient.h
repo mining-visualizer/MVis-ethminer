@@ -7,11 +7,29 @@
 
 #include <jsonrpccpp/client.h>
 #include <libethash/sha3_cryptopp.h>
+#include <libethcore/Transaction.h>
+
+
+//#define TOKEN_CONTRACT "0xb6ed7644c69416d67b522e20bc294a9a9b405b31"	// main net
+#define TOKEN_CONTRACT "0x48354a052CDd707B909daE507aD7F6E2DC065082"		// ETC test contract
 
 class FarmClient : public jsonrpc::Client
 {
     public:
         FarmClient(jsonrpc::IClientConnector &conn, jsonrpc::clientVersion_t type = jsonrpc::JSONRPC_CLIENT_V2) : jsonrpc::Client(conn, type) {}
+
+		void testTransaction() {
+			TransactionSkeleton t;
+			t.data = fromHex("");
+			t.nonce = u256(1);
+			t.to = toAddress("");
+			t.gas = u256(10);
+			t.gasPrice = u256(10);
+
+			Secret s = getSecret(m_signKey);
+			TransactionBase tx = TransactionBase(t);
+			tx.
+		}
 
         Json::Value eth_getWork() throw (jsonrpc::JsonRpcException)
         {
@@ -28,8 +46,8 @@ class FarmClient : public jsonrpc::Client
 		{
 			// challenge
 			Json::Value p;
-			p["from"] = "0x8940C61831C3A2ba1Fb9e50f27260B5b5Af1A3EB";	// ETH address (Jaxx HD)
-			p["to"] = "0xb6ed7644c69416d67b522e20bc294a9a9b405b31";		// 0xbitcoin contract address
+			p["from"] = MINER_ACCOUNT;			// ETH address (Jaxx HD)
+			p["to"] = TOKEN_CONTRACT;			// 0xbitcoin contract address
 			h256 bMethod = sha3("getChallengeNumber()");
 			std::string sMethod = toHex(bMethod, dev::HexPrefix::Add);
 			p["data"] = sMethod.substr(0, 10);
@@ -66,8 +84,9 @@ class FarmClient : public jsonrpc::Client
 		{
 			std::ostringstream ss;
 			Json::Value p;
-			p["from"] = "0x8940C61831C3A2ba1Fb9e50f27260B5b5Af1A3EB";	// ETH address (Jaxx HD)
-			p["to"] = "0xb6ed7644c69416d67b522e20bc294a9a9b405b31";		// 0xbitcoin contract address
+			p["from"] = MINER_ACCOUNT;		// ETH address (Jaxx HD)
+			p["to"] = TOKEN_CONTRACT;		// 0xbitcoin contract address
+
 			h256 bMethod = sha3("getMintDigest(uint256,bytes32,bytes32)");
 			std::string sMethod = toHex(bMethod, dev::HexPrefix::Add);
 			sMethod = sMethod.substr(0, 10);
@@ -98,7 +117,7 @@ class FarmClient : public jsonrpc::Client
 				LogS << "test hash";
 				LogS << result.asString();
 
-				h160 sender("0x8940C61831C3A2ba1Fb9e50f27260B5b5Af1A3EB");
+				h160 sender(MINER_ACCOUNT);
 				std::vector<byte> mix(84);
 				memcpy(&mix[0], challenge.data(), 32);
 				memcpy(&mix[32], sender.data(), 20);
@@ -110,6 +129,52 @@ class FarmClient : public jsonrpc::Client
 
 			} else
 				throw jsonrpc::JsonRpcException(jsonrpc::Errors::ERROR_CLIENT_INVALID_RESPONSE, result.toStyledString());
+		}
+
+		void testSubmitSolution() throw (jsonrpc::JsonRpcException) 
+		{
+			std::ostringstream ss;
+			Json::Value p;
+			p["from"] = MINER_ACCOUNT;		// ETH address (Jaxx HD)
+			p["to"] = TOKEN_CONTRACT;		// 0xbitcoin contract address
+			p["gas"] = "0x030D40";	// 200,000 gwei
+			p["gasPrice"] = "0x012A05F200";   // 5 gwei
+
+			h256 bMethod = sha3("mint(uint256,bytes32)");
+			std::string sMethod = toHex(bMethod, dev::HexPrefix::Add);
+			sMethod = sMethod.substr(0, 10);
+
+			h256 nonce = h256::random();
+			ss << std::setw(64) << std::setfill('0') << nonce.hex();
+			std::string s2(ss.str());
+
+			sMethod = sMethod + s2;
+
+			h256 challenge = h256::random();
+			ss = std::ostringstream();
+			ss << std::setw(64) << std::setfill('0') << challenge.hex();
+			s2 = std::string(ss.str());
+			sMethod = sMethod + s2;
+
+			p["data"] = sMethod;
+
+			Json::Value data = Json::Value(Json::arrayValue);
+			data.append(p);
+
+			LogS << data;
+
+			try 				
+			{
+				Json::Value result = this->CallMethod("eth_sendTransaction", data);
+				if (result.isString()) {
+					LogS << "test solution";
+					LogS << result.asString();
+				}
+			}
+			catch (jsonrpc::JsonRpcException& e) {
+				LogS << e.what();
+			}
+
 		}
 
 		bool eth_submitWork(const std::string& param1, const std::string& param2, const std::string& param3) throw (jsonrpc::JsonRpcException)
