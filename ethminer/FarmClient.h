@@ -203,7 +203,7 @@ public:
 		p.append(ss.str());
 		//LogS << "Raw transaction to send : " << ss.str();
 		result = this->CallMethod("eth_sendRawTransaction", p);
-		cout << "tx send result : " << result.asString() << endl;
+		//cout << "tx send result : " << result.asString() << endl;
 		return true;
 	}
 

@@ -245,10 +245,19 @@ public:
 		m_bestHash = logger.retrieveBestHash();
 		m_hashRates->init();
 		// can't call setWork until we've initialized the hash rates
-		for (auto const& m : m_miners)
-			m->setWork(m_work);
+		//for (auto const& m : m_miners)
+		//	m->setWork_token(challenge, target);
 
 		LogF << "Trace: GenericFarm.start [exit]";
+	}
+
+	/*-----------------------------------------------------------------------------------
+	* pauseMining
+	*----------------------------------------------------------------------------------*/
+	void pauseMining()
+	{
+		for (auto const& m : m_miners)
+			m->pause();
 	}
 
 
@@ -707,10 +716,10 @@ public:
 		LogF << "Trace: GenericFarm.submitProof";
 		if (m_onSolutionFoundToken && m_onSolutionFoundToken(_nonce, _m->index())) {
 			if (x_minerWork.try_lock()) {
-				//for (auto const& m : m_miners)
-				//	if (m != _m)
-				//		m->setWork();
 				challenge.clear();
+				for (auto const& m : m_miners)
+					if (m != _m)
+						m->setWork_token(challenge, target);
 				x_minerWork.unlock();
 				return true;
 			}

@@ -763,8 +763,6 @@ private:
 		h256 target;
 		bytes challenge;
 
-		//rpc.testHash();
-
 		while (true)
 		{
 			try
@@ -792,8 +790,6 @@ private:
 					h256 _target;
 					bytes _challenge;
 					rpc.eth_getWork_token(_challenge, _target);
-					//LogS << _challenge;
-					//LogS << _target;
 
 					if (!connectedToNode)
 					{
@@ -804,7 +800,7 @@ private:
 
 					if (_challenge != challenge)
 					{
-						LogS << "New challenge : " << toHex(_challenge);
+						LogB << "Trace: doFarm, New challenge : " << toHex(_challenge);
 						try
 						{
 							f.currentBlock = mvisRPC->getBlockNumber() + 1;
@@ -830,8 +826,7 @@ private:
 					break;
 
 				LogB << "Solution found; Submitting to node ...";
-				//LogS << "nonce=" << toString(solution);
-				//LogS << "challenge=" << toHex(challenge);
+				LogF << "Trace: doFarm, nonce=" << toString(solution) << ",  challenge=" << toHex(challenge);
 
 				bytes hash(32);
 				bytes mix(84);
@@ -854,7 +849,7 @@ private:
 				}
 
 
-				challenge.clear();
+				//challenge.clear();
 			}
 			catch (jsonrpc::JsonRpcException& e)
 			{

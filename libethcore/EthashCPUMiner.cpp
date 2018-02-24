@@ -67,20 +67,18 @@ EthashCPUMiner::~EthashCPUMiner()
 
 void EthashCPUMiner::kickOff()
 {
-	LogF << "Trace: EthashCPUMiner::kickOff";
+	LogF << "Trace: EthashCPUMiner::kickOff, miner[" << m_index << "]";
 	startWorking();
 }
 
 void EthashCPUMiner::pause()
 {
-	LogF << "Trace: EthashCPUMiner::pause";
+	LogF << "Trace: EthashCPUMiner::pause, miner[" << m_index << "]";
 	stopWorking();
 }
 
 void EthashCPUMiner::workLoop() {
-	LogF << "Trace: EthashCPUMiner::workLoop";
-
-	LogS << "Workloop challenge: " << toHex(challenge);
+	LogF << "Trace: EthashCPUMiner::workLoop, miner[" << m_index << "]";
 
 	Timer batchTime;
 	unsigned hashCount = 1;
