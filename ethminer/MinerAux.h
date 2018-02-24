@@ -763,7 +763,7 @@ private:
 		h256 target;
 		bytes challenge;
 
-		rpc.testHash();
+		//rpc.testHash();
 
 		while (true)
 		{
@@ -830,11 +830,29 @@ private:
 					break;
 
 				LogB << "Solution found; Submitting to node ...";
-				LogS << "nonce=" << toString(solution);
-				LogS << "challenge=" << toHex(challenge);
+				//LogS << "nonce=" << toString(solution);
+				//LogS << "challenge=" << toHex(challenge);
 
-				bool ok = rpc.eth_submitWorkToken(solution, challenge);
-				f.solutionFound(ok ? SolutionState::Accepted : SolutionState::Rejected, false, solutionMiner);
+				bytes hash(32);
+				bytes mix(84);
+				h160 sender(MINER_ACCOUNT);
+				memcpy(&mix[0], challenge.data(), 32);
+				memcpy(&mix[32], sender.data(), 20);
+				memcpy(&mix[52], solution.data(), 32);
+				SHA3_256((const ethash_h256_t*) hash.data(), (const uint8_t*) mix.data(), 84);
+				if (h256(hash) < target) {
+					//LogS << "Our hash : ";
+					//LogS << "0x" << toString(hash);
+					//rpc.testHash(solution, challenge);
+					bool ok = rpc.eth_submitWorkToken(solution, hash);
+					//bytes hashb(32);
+					//SHA3_256((const ethash_h256_t*) hashb.data(), (const uint8_t*) mix.data(), 84);
+					//rpc.eth_checkWorkToken(solution, challenge, hash, target);
+					//f.solutionFound(ok ? SolutionState::Accepted : SolutionState::Rejected, false, solutionMiner);
+				} else {
+					LogS << "Bad solution!";
+				}
+
 
 				challenge.clear();
 			}

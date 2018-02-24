@@ -80,13 +80,15 @@ void EthashCPUMiner::pause()
 void EthashCPUMiner::workLoop() {
 	LogF << "Trace: EthashCPUMiner::workLoop";
 
+	LogS << "Workloop challenge: " << toHex(challenge);
+
 	Timer batchTime;
 	unsigned hashCount = 1;
 	uint64_t batchCount = 0;
 	h256 nonce = h256::random();
 	h256 hash;
 	h160 sender(MINER_ACCOUNT);
-	std::vector<byte> mix(84);
+	bytes mix(84);
 	memcpy(&mix[0], challenge.data(), 32);
 	memcpy(&mix[32], sender.data(), 20);
 	memcpy(&mix[52], nonce.data(), 32);

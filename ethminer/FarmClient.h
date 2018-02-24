@@ -99,7 +99,8 @@ public:
 
 	}
 
-	void testHash()  throw (jsonrpc::JsonRpcException) {
+	void testHash(h256 nonce, bytes challenge)  throw (jsonrpc::JsonRpcException) {
+		std::vector<byte> mix(84);
 		std::ostringstream ss;
 		Json::Value p;
 		p["from"] = MINER_ACCOUNT;		// ETH address (Jaxx HD)
@@ -111,15 +112,12 @@ public:
 		sMethod = sMethod.substr(0, 10);
 
 		// nonce
-		h256 nonce = h256::random();
 		ss << std::setw(64) << std::setfill('0') << nonce.hex();
 		std::string s2(ss.str());
 		sMethod = sMethod + s2;
+		memcpy(&mix[52], nonce.data(), 32);
 
 		// challenge_number
-		nonce = h256::random();
-		bytes challenge = bytes(32);
-		memcpy(challenge.data(), nonce.data(), 32);
 		ss = std::ostringstream();
 		ss << std::left << std::setw(64) << std::setfill('0') << toHex(challenge);
 		s2 = std::string(ss.str());
@@ -137,13 +135,10 @@ public:
 			LogS << result.asString();
 
 			h160 sender(MINER_ACCOUNT);
-			std::vector<byte> mix(84);
 			memcpy(&mix[0], challenge.data(), 32);
 			memcpy(&mix[32], sender.data(), 20);
-			memcpy(&mix[52], nonce.data(), 32);
-			bytes hash(64);
+			bytes hash(32);
 			SHA3_256((const ethash_h256_t*) hash.data(), (const uint8_t*) mix.data(), 84);
-			//SHA3_512((uint8_t*) hash.data(), (const uint8_t*) mix.data(), 84);
 			LogS << "0x" << toHex(hash);
 			LogS << "end test";
 
@@ -163,7 +158,7 @@ public:
 			throw jsonrpc::JsonRpcException(jsonrpc::Errors::ERROR_CLIENT_INVALID_RESPONSE, result.toStyledString());
 	}
 
-	bool eth_submitWorkToken(h256 _nonce, bytes _challenge) throw (jsonrpc::JsonRpcException) {
+	bool eth_submitWorkToken(h256 _nonce, bytes _hash) throw (jsonrpc::JsonRpcException) {
 
 		// get transaction count for nonce
 		Json::Value p;
@@ -190,9 +185,9 @@ public:
 		ss << std::setw(64) << std::setfill('0') << _nonce.hex();
 		std::string s2(ss.str());
 		sMethod = sMethod + s2;
-		// and the challenge
+		// and the hash
 		ss = std::stringstream();
-		ss << std::left << std::setw(64) << std::setfill('0') << toHex(_challenge);
+		ss << std::left << std::setw(64) << std::setfill('0') << toHex(_hash);
 		s2 = std::string(ss.str());
 		sMethod = sMethod + s2;
 		t.data = fromHex(sMethod);
@@ -206,10 +201,60 @@ public:
 		// submit to the node 
 		p.clear();
 		p.append(ss.str());
-		LogS << "Raw transaction to send : " << ss.str();
+		//LogS << "Raw transaction to send : " << ss.str();
 		result = this->CallMethod("eth_sendRawTransaction", p);
 		cout << "tx send result : " << result.asString() << endl;
 		return true;
+	}
+
+	void eth_checkWorkToken(h256 _nonce, bytes _challenge, bytes _hash, h256 _target) {
+		// this calls the mint(nonce, challenge) function using eth_call so it can check the return result
+		std::ostringstream ss;
+		Json::Value p;
+		p["from"] = MINER_ACCOUNT;		// ETH address (Jaxx HD)
+		p["to"] = TOKEN_CONTRACT;		// 0xbitcoin contract address
+
+		// function signature
+		h256 bMethod = sha3("mint(uint256,bytes32)");
+		//h256 bMethod = sha3("checkMintSolution(uint256,bytes32,bytes32,uint256)");
+		std::string sMethod = toHex(bMethod, dev::HexPrefix::Add);
+		sMethod = sMethod.substr(0, 10); 
+
+		// nonce
+		ss << std::setw(64) << std::setfill('0') << _nonce.hex();
+		std::string s2(ss.str());
+		sMethod = sMethod + s2;
+
+		// hash
+		ss = std::ostringstream();
+		ss << std::left << std::setw(64) << std::setfill('0') << toHex(_hash);
+		s2 = std::string(ss.str());
+		sMethod = sMethod + s2;
+
+		// challenge_number
+		//ss = std::ostringstream();
+		//ss << std::left << std::setw(64) << std::setfill('0') << toHex(_challenge);
+		//s2 = std::string(ss.str());
+		//sMethod = sMethod + s2;
+
+		// target  (this is for checkMintSolution only)
+		//ss = std::ostringstream();
+		//ss << std::setw(64) << std::setfill('0') << _target.hex();
+		//s2 = std::string(ss.str());
+		//sMethod = sMethod + s2;
+
+
+		p["data"] = sMethod;
+
+		Json::Value data;
+		data.append(p);
+		data.append("latest");
+
+		Json::Value result = this->CallMethod("eth_call", data);
+		if (result.isString()) {
+			LogS << "mint() returns : " << result.asString();
+		} else
+			throw jsonrpc::JsonRpcException(jsonrpc::Errors::ERROR_CLIENT_INVALID_RESPONSE, result.toStyledString());
 	}
 
 	bool eth_submitHashrate(const std::string& param1, const std::string& param2) throw (jsonrpc::JsonRpcException) {
