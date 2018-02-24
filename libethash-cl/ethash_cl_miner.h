@@ -66,18 +66,12 @@ public:
 
 	bool verifyHashes();
 	bool buildBinary(cl::Device& _device, std::string &_outfile);
-	bool init(
-		ethash_light_t _light,
-		uint8_t const* _lightData,
-		uint64_t _lightSize,
-		unsigned _platformId,
-		unsigned _deviceId
-		);
+	bool init(unsigned _platformId, unsigned _deviceId);
 	void exportDAG(std::string _seedhash);
 	void generateDAG(uint32_t nodes);
 	bool verifyDAG(ethash_light_t _light, uint32_t _nodes);
 	void finish();
-	void search(h256 _header, uint64_t _target, search_hook& _hook, bool _ethStratum, uint64_t _startN);
+	void search(uint64_t _target, search_hook& _hook, bool _ethStratum, uint64_t _startN);
 	void setThrottle(int _percent);
 	void checkThrottleChange(int& _throttle, int& _bufferCount);
 	uint64_t nextNonceIndex(uint64_t &_nonceIndex, bool _overrideRandom);

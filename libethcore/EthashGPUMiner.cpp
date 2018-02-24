@@ -177,29 +177,15 @@ void EthashGPUMiner::workLoop()
 	try {
 		// take local copy of work since it may end up being overwritten by kickOff/pause.
 		WorkPackage w = work();
-		if (!m_miner || m_minerSeed != w.seedHash)
+		if (!m_miner)
 		{
 			LogF << "Trace: EthashGPUMiner::workLoop-2, miner[" << m_index << "]";
-			if (s_dagLoadMode == DAG_LOAD_MODE_SEQUENTIAL)
-			{
-				while (s_dagLoadIndex < index()) {
-					this_thread::sleep_for(chrono::seconds(1));
-				}
-			}
+			LogS << "Initialising miner[" << m_index << "]";
 
-			LogS << "Initialising miner for " << w.seedHash.hex().substr(0, 8);
-			m_minerSeed = w.seedHash;
-
-			delete m_miner;
 			m_miner = new ethash_cl_miner(this);
-
 			m_device = s_devices[index()] > -1 ? s_devices[index()] : index();
 
-			EthashAux::LightType light;
-			light = EthashAux::light(w.seedHash);
-			bytesConstRef lightData = light->data();
-
-			if (!m_miner->init(light->light, lightData.data(), lightData.size(), s_platformId, m_device))
+			if (!m_miner->init(s_platformId, m_device))
 				throw cl::Error(-1, "cl_miner.init failed!");
 
 			s_dagLoadIndex++;

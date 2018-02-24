@@ -646,13 +646,7 @@ bool ethash_cl_miner::buildBinary(cl::Device& _device, std::string &_outfile)
 }
 
 
-bool ethash_cl_miner::init(
-	ethash_light_t _light, 
-	uint8_t const* _lightData, 
-	uint64_t _lightSize,
-	unsigned _platformId,
-	unsigned _deviceId
-)
+bool ethash_cl_miner::init(unsigned _platformId, unsigned _deviceId)
 {
 	// get all platforms
 	try
@@ -750,18 +744,11 @@ bool ethash_cl_miner::init(
 		// give us our range of indexes, then the actual start nonce for a kernel run is == nonceIndex * m_globalWorkSize.
 		m_randDist = std::uniform_int_distribution<uint64_t>(0, ceil(~uint64_t(0) / m_globalWorkSize));
 
-		// get the dag byte size.
-		uint64_t dagSize = ethash_get_datasize(_light->block_number);
-		uint32_t dagSize128 = (unsigned)(dagSize / ETHASH_MIX_BYTES);
-		uint32_t lightSize64 = (unsigned)(_lightSize / sizeof(node));
-
 		// patch source code
 		// note: ETHASH_CL_MINER_KERNEL is simply ethash_cl_miner_kernel.cl compiled
 		// into a byte array by bin2h.cmake. There is no need to load the file by hand in runtime
 		string code(ETHASH_CL_MINER_KERNEL, ETHASH_CL_MINER_KERNEL + ETHASH_CL_MINER_KERNEL_SIZE);
 		addDefinition(code, "GROUP_SIZE", s_workgroupSize);
-		addDefinition(code, "DAG_SIZE", dagSize128);
-		addDefinition(code, "LIGHT_SIZE", lightSize64);
 		addDefinition(code, "ACCESSES", ETHASH_ACCESSES);
 		addDefinition(code, "MAX_OUTPUTS", c_maxSearchResults);
 		addDefinition(code, "PLATFORM", platformId);
@@ -788,35 +775,9 @@ bool ethash_cl_miner::init(
 			return false;
 		}
 
-		if (ProgOpt::Get("Kernel", "Tech") == "ISA")
-		{
-			std::string outfile;
-			if (
-				!assembleBinary(s_workgroupSize, dagSize128, cl_device, m_device, outfile) ||
-				!buildBinary(cl_device, outfile)
-				)
-				return false;
-		}
 
-
-		// create buffer for dag
-		LogF << "Trace: ethash_cl_miner::init-5, device[" << _deviceId << "]";
-		try
-		{
-			m_light = cl::Buffer(m_context, CL_MEM_READ_ONLY, _lightSize);
-			m_dag = cl::Buffer(m_context, CL_MEM_READ_WRITE, dagSize);
-			m_queue[0].enqueueWriteBuffer(m_light, CL_TRUE, 0, _lightSize, _lightData);
-		}
-		catch (cl::Error const& err)
-		{
-			LogB << "Allocating/mapping DAG buffer failed with: " << err.what() << "(" << err.err() << "). GPU can't allocate the DAG in a single chunk. Bailing.";
-			return false;
-		}
-		// create buffer for header
-		m_header = cl::Buffer(m_context, CL_MEM_READ_ONLY, 32);
-
-		m_searchKernel.setArg(1, m_header);
-		m_searchKernel.setArg(2, m_dag);
+		//m_searchKernel.setArg(1, m_header);
+		//m_searchKernel.setArg(2, m_dag);
 		if (ProgOpt::Get("Kernel", "Tech") == "CPP")
 			m_searchKernel.setArg(7, ~0u);
 
@@ -830,12 +791,6 @@ bool ethash_cl_miner::init(
 			m_queue[0].enqueueWriteBuffer(m_searchBuffer[i], false, offsetof(search_results, hashes) + sizeof(uint64_t), sizeof(uint64_t), &c_maxHash);
 		}
 
-		generateDAG(dagSize / sizeof(node));
-
-		if (ProgOpt::Get("General", "VerifyDAG", "0") != "0" &&
-			(!verifyDAG(_light, dagSize / sizeof(node)) || !verifyHashes())
-		   )
-			return false;
 
 		// create buffer for best hash. its value is preserved across kernel invocations. when the kernel finds a better 
 		// hash, it updates its copy of m_bestHashBuff AND stores it in m_searchBuffer[x].hashes[1]. that way we can 
@@ -872,7 +827,7 @@ uint64_t ethash_cl_miner::nextNonceIndex(uint64_t &_nonceIndex, bool _overrideRa
 }
 
 
-void ethash_cl_miner::search(h256 _header, uint64_t target, search_hook& hook, bool _ethStratum, uint64_t _startN)
+void ethash_cl_miner::search(uint64_t target, search_hook& hook, bool _ethStratum, uint64_t _startN)
 {
 	try
 	{
@@ -891,9 +846,6 @@ void ethash_cl_miner::search(h256 _header, uint64_t target, search_hook& hook, b
 			ReadGuard l(x_throttle);
 			l_bufferCount = (m_throttle == 0) ? c_bufferCount : 1;
 		}
-
-		// update header constant buffer
-		m_queue[0].enqueueWriteBuffer(m_header, CL_TRUE, 0, 32, _header.data());
 
 		// pass these to stop the compiler unrolling the loops
 		m_searchKernel.setArg(5, target);
