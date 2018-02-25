@@ -33,15 +33,14 @@ public:
 		virtual ~search_hook(); // always a virtual destructor for a class with virtuals.
 
 		// reports progress, return true to abort
-		virtual bool found(uint64_t const* nonces, uint32_t count) = 0;
+		virtual bool found(h256 const* nonces, uint32_t count) = 0;
 		virtual bool searched(uint32_t _count, uint64_t _hashSample, uint64_t _bestHash) = 0;
 		virtual bool shouldStop() = 0;
 	};
 
 	typedef struct
 	{
-		uint64_t start_nonce;
-		h256 header;
+		h256 nonce;
 		unsigned buf;
 	} pending_batch;
 
@@ -65,13 +64,14 @@ public:
 	);
 
 	bool verifyHashes();
+	void testHashes();
 	bool buildBinary(cl::Device& _device, std::string &_outfile);
 	bool init(unsigned _platformId, unsigned _deviceId);
 	void exportDAG(std::string _seedhash);
 	void generateDAG(uint32_t nodes);
 	bool verifyDAG(ethash_light_t _light, uint32_t _nodes);
 	void finish();
-	void search(uint64_t _target, search_hook& _hook, bool _ethStratum, uint64_t _startN);
+	void search(bytes challenge, uint64_t _target, search_hook& _hook);
 	void setThrottle(int _percent);
 	void checkThrottleChange(int& _throttle, int& _bufferCount);
 	uint64_t nextNonceIndex(uint64_t &_nonceIndex, bool _overrideRandom);
@@ -106,7 +106,9 @@ private:
 	cl::Buffer m_light;
 	cl::Buffer m_header;
 	cl::Buffer m_searchBuffer[c_bufferCount];
+	cl::Buffer m_nonceBuffer[c_bufferCount];
 	cl::Buffer m_bestHashBuff;
+	cl::Buffer m_challenge, m_sender;
 	unsigned m_globalWorkSize;
 	bool m_openclOnePointOne;
 

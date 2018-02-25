@@ -28,6 +28,7 @@
 #include <chrono>
 #include <libethash-cl/ethash_cl_miner.h>
 #include "ethminer/MultiLog.h"
+#include <libethash/sha3_cryptopp.h>
 
 using namespace std;
 using namespace dev;
@@ -73,7 +74,7 @@ public:
 	}
 
 protected:
-	virtual bool found(uint64_t const* _nonces, uint32_t _count) override
+	virtual bool found(h256 const* _nonces, uint32_t _count) override
 	{
 		LogF << "Trace: EthashCLHook::found, miner[" << m_owner->m_index << "], count=" << _count;
 		for (uint32_t i = 0; i < _count; ++i)
@@ -86,8 +87,8 @@ protected:
 	{
 		UniqueGuard l(x_all);
 		bool shouldStop = m_abort || m_owner->shouldStop();
-		m_owner->setCurrentHash(_hashSample);
-		m_owner->setBestHash(_bestHash);	// this best hash might be the same as the last one, but we're not time critical here.
+		//m_owner->setCurrentHash(_hashSample);
+		//m_owner->setBestHash(_bestHash);	// this best hash might be the same as the last one, but we're not time critical here.
 		return (m_aborted = shouldStop);
 	}
 
@@ -133,26 +134,19 @@ EthashGPUMiner::~EthashGPUMiner()
 	delete m_hook;
 }
 
-bool EthashGPUMiner::report(uint64_t _nonce)
+bool EthashGPUMiner::report(h256 _nonce)
 {
-	Nonce n = (Nonce)(u64)_nonce;
-	WorkPackage w = work();
-	EthashProofOfWork::Result r = EthashAux::eval(w.seedHash, w.headerHash, n);
-	uint64_t hash = upper64OfHash(r.value);
-	if (r.value < w.boundary)
-		return submitProof(Solution{n, r.mixHash});
-	else
+	// verify the solution
+	h160 sender(MINER_ACCOUNT);
+	h256 hash;
+	bytes mix(84);
+	memcpy(&mix[0], challenge.data(), 32);
+	memcpy(&mix[32], sender.data(), 20);
+	memcpy(&mix[52], _nonce.data(), 32);
+	SHA3_256((const ethash_h256_t*) &hash, (const uint8_t*) mix.data(), 84);
+	if (hash < target && submitProof(_nonce))
 	{
-		if (m_closeHit > 0 && hash < m_closeHit)
-		{
-			unsigned work = std::chrono::duration_cast<std::chrono::seconds>(SteadyClock::now() - m_lastCloseHit).count();
-			m_farm->reportCloseHit(hash, work, m_index);
-			m_lastCloseHit = SteadyClock::now();
-			return false;
-		}
-		LogB << "Hash fault : nonce = 0x" << std::hex << _nonce
-			<< ", headerHash = " << w.headerHash.hex().substr(0, 8) << ", [device:" << m_index << "]";
-		m_farm->reportHashFault(m_index);
+		return  submitProof(_nonce);
 	}
 	return false;
 }
@@ -196,8 +190,11 @@ void EthashGPUMiner::workLoop()
 		uint64_t startN = 0;
 		if (w.exSizeBits >= 0)
 			startN = w.startNonce | ((uint64_t)index() << (64 - 4 - w.exSizeBits)); // this can support up to 16 devices
-		uint64_t threshold = max(m_closeHit, upper64OfHash(w.boundary));
-		m_miner->search(w.headerHash, threshold, *m_hook, (w.exSizeBits >= 0), startN);
+		uint64_t threshold = upper64OfHash(target);
+
+		//m_miner->testHashes();
+
+		m_miner->search(challenge, threshold, *m_hook);
 	}
 	catch (cl::Error const& _e)
 	{
@@ -221,8 +218,7 @@ void EthashGPUMiner::checkHash(uint64_t _hash, uint64_t _nonce, h256 _header)
 	h256 header = w.headerHash;
 	h256 seed = w.seedHash;
 
-	if (_header != header)
-		// a new work package just came in so we'll skip this check.
+	if (shouldStop())
 		return;
 	Nonce n = (Nonce) (u64) _nonce;
 	EthashProofOfWork::Result r = EthashAux::eval(seed, header, n);
@@ -305,7 +301,7 @@ void dev::eth::EthashGPUMiner::exportDAG(unsigned _block)
 	light = EthashAux::light(seedHash);
 	bytesConstRef lightData = light->data();
 
-	if (!miner->init(light->light, lightData.data(), lightData.size(), s_platformId, 0))
+	if (!miner->init(s_platformId, 0))
 		throw cl::Error(-1, "cl_miner.init failed!");
 
 	miner->exportDAG(seedHash.hex().substr(0, 16));

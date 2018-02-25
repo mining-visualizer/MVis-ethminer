@@ -74,7 +74,7 @@ protected:
 
 private:
 	void workLoop() override;
-	bool report(uint64_t _nonce);
+	bool report(h256 _nonce);
 	void resetBestHash();
 
 	EthashCLHook* m_hook = nullptr;

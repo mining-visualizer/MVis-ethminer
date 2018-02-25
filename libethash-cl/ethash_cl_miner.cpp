@@ -42,6 +42,7 @@
 #include <libdevcore/Log.h>
 #include "ethminer/MultiLog.h"
 #include "ethminer/Misc.h"
+#include <libethash/sha3_cryptopp.h>
 
 #define ETHASH_BYTES 32
 
@@ -392,6 +393,60 @@ bool ethash_cl_miner::verifyHashes()
 	return errors == 0;
 }
 
+
+void ethash_cl_miner::testHashes() {
+
+	for (int i = 0; i != 50; ++i) {
+		h256 nonce = h256::random();
+		bytes challenge(32);
+		memcpy(challenge.data(), nonce.data(), 32);
+		nonce = h256::random();
+		h160 sender(MINER_ACCOUNT);
+
+		cl::Program program = m_programCL;
+		cl::Kernel testKeccak(program, "test_keccak");
+
+		// challenge
+		cl::Buffer challengeBuff = cl::Buffer(m_context, CL_MEM_READ_WRITE, 32);
+		m_queue[0].enqueueWriteBuffer(challengeBuff, CL_TRUE, 0, 32, challenge.data());
+		testKeccak.setArg(0, challengeBuff);
+
+		// sender
+		cl::Buffer senderBuff = cl::Buffer(m_context, CL_MEM_READ_WRITE, 20);
+		m_queue[0].enqueueWriteBuffer(senderBuff, CL_TRUE, 0, 20, sender.data());
+		testKeccak.setArg(1, senderBuff);
+
+		// nonce
+		cl::Buffer nonceBuff = cl::Buffer(m_context, CL_MEM_READ_WRITE, 32);
+		m_queue[0].enqueueWriteBuffer(nonceBuff, CL_TRUE, 0, 32, nonce.data());
+		testKeccak.setArg(2, nonceBuff);
+
+		cl::Buffer hashBuff = cl::Buffer(m_context, CL_MEM_WRITE_ONLY, 32);
+		testKeccak.setArg(3, hashBuff);
+		testKeccak.setArg(4, ~0u);
+
+		m_queue[0].enqueueNDRangeKernel(testKeccak, cl::NullRange, 1, s_workgroupSize);
+
+		bytes kernelhash(32);
+		m_queue[0].enqueueReadBuffer(hashBuff, CL_TRUE, 0, 32, kernelhash.data());
+
+		// now compute the hash on the CPU host and compare
+		bytes mix(84);
+		memcpy(&mix[0], challenge.data(), 32);
+		memcpy(&mix[32], sender.data(), 20);
+		memcpy(&mix[52], nonce.data(), 32);
+		bytes hash(32);
+		SHA3_256((const ethash_h256_t*) hash.data(), (const uint8_t*) mix.data(), 84);
+		if (hash != kernelhash) {
+			LogS << "Not equal!";
+		}
+		LogS << "CPU: " << toHex(hash);
+		LogS << "GPU: " << toHex(kernelhash);
+	}
+
+}
+
+
 void ethash_cl_miner::exportDAG(std::string _seedhash)
 {
 	const unsigned NODES = 1000;
@@ -646,6 +701,21 @@ bool ethash_cl_miner::buildBinary(cl::Device& _device, std::string &_outfile)
 }
 
 
+uint64_t ethash_cl_miner::nextNonceIndex(uint64_t &_nonceIndex, bool _overrideRandom) {
+	// even if we are using the linear method, we still need to generate a random nonce at the begining
+	// of each work package, which is what the override parameter is for.
+	if (m_nonceGeneration == c_nonceLinear && !_overrideRandom)
+		return _nonceIndex++;
+	else {
+		// look for a new random nonce index we (or any other miner) haven't checked yet.
+		do {
+			_nonceIndex = m_randDist(m_randGen);
+		} while (!m_owner->storeNonceIndex(_nonceIndex));
+		return _nonceIndex;
+	}
+}
+
+
 bool ethash_cl_miner::init(unsigned _platformId, unsigned _deviceId)
 {
 	// get all platforms
@@ -736,14 +806,6 @@ bool ethash_cl_miner::init(unsigned _platformId, unsigned _deviceId)
 		if (m_globalWorkSize % s_workgroupSize != 0)
 			m_globalWorkSize = ((m_globalWorkSize / s_workgroupSize) + 1) * s_workgroupSize;
 
-		// set up for random nonces.  even if we're using the linear method, we still need this to generate
-		// the first nonce index of each work package.
-		std::random_device rd;
-		m_randGen = std::mt19937(rd());
-		// we're using the concept of a 'nonce index' : divide the total address space by m_globalWorkSize, which 
-		// give us our range of indexes, then the actual start nonce for a kernel run is == nonceIndex * m_globalWorkSize.
-		m_randDist = std::uniform_int_distribution<uint64_t>(0, ceil(~uint64_t(0) / m_globalWorkSize));
-
 		// patch source code
 		// note: ETHASH_CL_MINER_KERNEL is simply ethash_cl_miner_kernel.cl compiled
 		// into a byte array by bin2h.cmake. There is no need to load the file by hand in runtime
@@ -763,8 +825,7 @@ bool ethash_cl_miner::init(unsigned _platformId, unsigned _deviceId)
 		{
 			m_programCL.build({cl_device}, options);
 			built = true;
-			if (ProgOpt::Get("Kernel", "Tech") == "CPP")
-				m_searchKernel = cl::Kernel(m_programCL, "ethash_search");
+			m_searchKernel = cl::Kernel(m_programCL, "bitcoin0x_search");
 		}
 		catch (cl::Error const& err)
 		{
@@ -774,14 +835,11 @@ bool ethash_cl_miner::init(unsigned _platformId, unsigned _deviceId)
 				LogB << " Kernel error : " << err.err() << " Did you specify an existing kernel name? " << err.what() << "\n";
 			return false;
 		}
+		
+		// buffers
+		m_challenge = cl::Buffer(m_context, CL_MEM_READ_WRITE, 32);
+		m_sender = cl::Buffer(m_context, CL_MEM_READ_ONLY, 20);
 
-
-		//m_searchKernel.setArg(1, m_header);
-		//m_searchKernel.setArg(2, m_dag);
-		if (ProgOpt::Get("Kernel", "Tech") == "CPP")
-			m_searchKernel.setArg(7, ~0u);
-
-		// create & initialize mining buffers
 		for (unsigned i = 0; i != c_bufferCount; ++i)
 		{
 			m_searchBuffer[i] = cl::Buffer(m_context, CL_MEM_WRITE_ONLY, sizeof(search_results));
@@ -789,15 +847,13 @@ bool ethash_cl_miner::init(unsigned _platformId, unsigned _deviceId)
 			m_queue[0].enqueueWriteBuffer(m_searchBuffer[i], false, offsetof(search_results, solutions), 4, &c_zero);
 			// second element of hashes will store the best hash found
 			m_queue[0].enqueueWriteBuffer(m_searchBuffer[i], false, offsetof(search_results, hashes) + sizeof(uint64_t), sizeof(uint64_t), &c_maxHash);
+			m_nonceBuffer[i] = cl::Buffer(m_context, CL_MEM_READ_ONLY, 32);
 		}
 
-
-		// create buffer for best hash. its value is preserved across kernel invocations. when the kernel finds a better 
-		// hash, it updates its copy of m_bestHashBuff AND stores it in m_searchBuffer[x].hashes[1]. that way we can 
-		// be kept up-to-date on the current best hash value without interrupting the kernel.
-		m_bestHashBuff = cl::Buffer(m_context, CL_MEM_READ_WRITE, sizeof(uint64_t));
-		uint64_t const c_maxHash = ~uint64_t(0);
-		m_queue[0].enqueueWriteBuffer(m_bestHashBuff, true, 0, sizeof(uint64_t), &c_maxHash);
+		h160 sender(MINER_ACCOUNT);
+		m_queue[0].enqueueWriteBuffer(m_sender, CL_TRUE, 0, 20, sender.data());
+		m_searchKernel.setArg(1, m_sender);
+		m_searchKernel.setArg(5, ~0u);		// isolate argument
 
 	}
 	catch (cl::Error const& err)
@@ -810,24 +866,7 @@ bool ethash_cl_miner::init(unsigned _platformId, unsigned _deviceId)
 }
 
 
-uint64_t ethash_cl_miner::nextNonceIndex(uint64_t &_nonceIndex, bool _overrideRandom)
-{
-	// even if we are using the linear method, we still need to generate a random nonce at the begining
-	// of each work package, which is what the override parameter is for.
-	if (m_nonceGeneration == c_nonceLinear && !_overrideRandom)
-		return _nonceIndex++;
-	else
-	{
-		// look for a new random nonce index we (or any other miner) haven't checked yet.
-		do {
-			_nonceIndex = m_randDist(m_randGen);
-		} while (!m_owner->storeNonceIndex(_nonceIndex));
-		return _nonceIndex;
-	}
-}
-
-
-void ethash_cl_miner::search(uint64_t target, search_hook& hook, bool _ethStratum, uint64_t _startN)
+void ethash_cl_miner::search(bytes _challenge, uint64_t _target, search_hook& _hook)
 {
 	try
 	{
@@ -847,18 +886,11 @@ void ethash_cl_miner::search(uint64_t target, search_hook& hook, bool _ethStratu
 			l_bufferCount = (m_throttle == 0) ? c_bufferCount : 1;
 		}
 
-		// pass these to stop the compiler unrolling the loops
-		m_searchKernel.setArg(5, target);
-		m_searchKernel.setArg(3, m_bestHashBuff);
+		h256 nonce;
+		m_queue[0].enqueueWriteBuffer(m_challenge, CL_TRUE, 0, 32, &_challenge);
+		m_searchKernel.setArg(0, m_challenge);
+		m_searchKernel.setArg(4, _target);
 
-		random_device engine;
-		uint64_t nonce_index, start_nonce;
-		// this is for when we are using the linear nonce method. we're only interested in the second parameter 
-		// here (override). the effect is to generate a new random nonce index, as opposed to a simple linear increment
-		// that we do in the hashing loop.
-		nextNonceIndex(nonce_index, true);
-		if (_ethStratum)
-			start_nonce = _startN;
 		LogF << "Trace: ethash_cl_miner::search-2, device[" << m_device << "]";
 
 		while (true)
@@ -892,9 +924,9 @@ void ethash_cl_miner::search(uint64_t target, search_hook& hook, bool _ethStratu
 					millisDelay = (l_throttle == 100) ? 100 : millisDelay - thisDelay;
 					checkThrottleChange(l_throttle, l_bufferCount);
 					if (l_throttle == 100) 
-						hook.searched(0, 0, c_maxHash);	// keep the hash rates display up-to-date
+						_hook.searched(0, 0, c_maxHash);	// keep the hash rates display up-to-date
 					// check for new work package
-					if (hook.shouldStop())
+					if (_hook.shouldStop())
 					{
 						LogF << "Throttle: Sleeping interrupted by new work package, device[" << m_device << "]";
 						// I'd use break but we're two levels deep.
@@ -916,17 +948,13 @@ void ethash_cl_miner::search(uint64_t target, search_hook& hook, bool _ethStratu
 			kernelStartTime = SteadyClock::now();
 			if (m_pending.size() < l_bufferCount)
 			{
-				if (_ethStratum)
-					start_nonce += m_globalWorkSize;
-				else
-					start_nonce = nextNonceIndex(nonce_index, false) * m_globalWorkSize;
-
-				m_searchKernel.setArg(0, m_searchBuffer[m_buf]);
-				m_searchKernel.setArg(4, start_nonce);
-				m_searchKernel.setArg(6, max(m_bestHash, target));
+				m_searchKernel.setArg(3, m_searchBuffer[m_buf]);
+				nonce = h256::random();
+				m_queue[m_buf].enqueueWriteBuffer(m_nonceBuffer[m_buf], CL_TRUE, 0, 32, nonce.data());
+				m_searchKernel.setArg(2, m_nonceBuffer[m_buf]);
 
 				m_queue[m_buf].enqueueNDRangeKernel(m_searchKernel, cl::NullRange, m_globalWorkSize, s_workgroupSize);
-				m_pending.push_back({start_nonce, _header, m_buf});
+				m_pending.push_back({nonce, m_buf});
 
 				m_results[m_buf] = (search_results*) m_queue[m_buf].enqueueMapBuffer(m_searchBuffer[m_buf], CL_FALSE, CL_MAP_READ, 0, 
 																			   sizeof(search_results), 0, &m_mapEvents[m_buf]);
@@ -944,31 +972,17 @@ void ethash_cl_miner::search(uint64_t target, search_hook& hook, bool _ethStratu
 				m_mapEvents[batch.buf].wait();
 
 				kernelTime = std::chrono::duration_cast<std::chrono::milliseconds>(SteadyClock::now() - kernelStartTime).count();
-				{
-					Guard l(x_bestHash);
-					if (m_bestHash == ~uint64_t(0))
-					{
-						// we've been signalled externally to reset the best hash.
-						m_queue[batch.buf].enqueueWriteBuffer(m_bestHashBuff, true, 0, sizeof(uint64_t), &c_maxHash);
-						m_bestHash--;	// don't want to be constantly resetting this buffer to c_maxHash
-					}
-					if (m_results[batch.buf]->hashes[1] != ~uint64_t(0))
-					{
-						// the kernel found a better hash
-						m_bestHash = m_results[batch.buf]->hashes[1];
-						m_queue[batch.buf].enqueueWriteBuffer(m_searchBuffer[batch.buf], true, offsetof(search_results, hashes) + sizeof(uint64_t), sizeof(uint64_t), &c_maxHash);
-					}
-				}
-				uint64_t hashSample = m_results[batch.buf]->hashes[0];
 				unsigned num_found = min<unsigned>(m_results[batch.buf]->solutions[0], c_maxSearchResults);
-				uint64_t nonces[c_maxSearchResults];
-				for (unsigned i = 0; i != num_found; ++i)
-					nonces[i] = batch.start_nonce + m_results[batch.buf]->solutions[i + 1];
+				h256 nonces[c_maxSearchResults];
+				for (unsigned i = 0; i != num_found; ++i) {
+					nonces[i] = batch.nonce;
+					uint32_t* x = (uint32_t*) &nonces[i];
+					x[0] = m_results[batch.buf]->solutions[i + 1];
+				}
 
 				m_queue[batch.buf].enqueueUnmapMemObject(m_searchBuffer[batch.buf], m_results[batch.buf]);
-				if (num_found && hook.found(nonces, num_found))
+				if (num_found && _hook.found(nonces, num_found))
 					break;
-				m_owner->checkHash(hashSample, batch.start_nonce, batch.header);
 
 				// reset search buffer if we're still going, ie. we found a solution but it got rejected.
 				if (num_found)
@@ -977,7 +991,7 @@ void ethash_cl_miner::search(uint64_t target, search_hook& hook, bool _ethStratu
 				if (batch.buf == 0)
 					// hash rates come out smoother if we report regularly.
 					m_owner->accumulateHashes(m_globalWorkSize * l_bufferCount, batchCount++);
-				if (hook.searched(0, hashSample, m_bestHash))
+				if (_hook.searched(0, 0, m_bestHash))
 					break;
 			}
 		}

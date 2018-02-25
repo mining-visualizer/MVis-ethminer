@@ -491,6 +491,11 @@ static uint fnv_reduce(uint4 v)
 
 typedef struct
 {
+	ulong ulongs[20 / sizeof(ulong)];
+} hash20_t;
+
+typedef struct
+{
 	ulong ulongs[32 / sizeof(ulong)];
 } hash32_t;
 
@@ -606,6 +611,89 @@ static hash32_t compute_hash(
 	return *(hash32_t*) &state[0];
 }
 
+/*-----------------------------------------------------------------------------------
+* test_keccak  
+*----------------------------------------------------------------------------------*/
+#if PLATFORM != OPENCL_PLATFORM_NVIDIA // use maxrregs on nv
+__attribute__((reqd_work_group_size(GROUP_SIZE, 1, 1)))
+#endif
+__kernel void test_keccak(
+	__constant uint const* g_challenge,			// 32 bytes	(8 uints)
+	__constant uint const* g_sender,			// 20 bytes (5 uints)
+	__constant uint const* g_nonce,				// 32 bytes (8 uints)
+	__global volatile uint* restrict g_output,	// 32 bytes (8 uints)
+	uint isolate
+) {
+	uint const gid = get_global_id(0);
+	if (gid != 0) return;
+
+	uint state[50];
+	uchar* state_uchar = (uchar*) state;
+
+	copy(state, g_challenge, 8);
+	copy(state + 8, g_sender, 5);
+	copy(state + 13, g_nonce, 8);
+
+	for (uint i = 21; i != 50; ++i) {
+		state[i] = 0;
+	}
+
+	state_uchar[84] = 0x01;
+	state_uchar[135] = 0x80;
+
+	// keccak_256
+	keccak_f1600_no_absorb((uint2*) state, 1, isolate);
+
+	copy(g_output, state, 8);
+
+}
+
+/*-----------------------------------------------------------------------------------
+* 0xbitcoin_search
+*----------------------------------------------------------------------------------*/
+#if PLATFORM != OPENCL_PLATFORM_NVIDIA // use maxrregs on nv
+__attribute__((reqd_work_group_size(GROUP_SIZE, 1, 1)))
+#endif
+__kernel void bitcoin0x_search(
+	__constant uint const* g_challenge,			// 32 bytes	(8 uints)
+	__constant uint const* g_sender,			// 20 bytes (5 uints)
+	__constant uint const* g_nonce,				// 32 bytes (8 uints)
+	__global volatile search_results_t* restrict g_output,	
+	ulong target,
+	uint isolate
+) {
+	uint const gid = get_global_id(0);
+
+	uint state[50];
+	uchar* state_uchar = (uchar*) state;
+	ulong* state_ulong = (ulong*) state;
+
+	copy(state, g_challenge, 8);
+	copy(state + 8, g_sender, 5);
+	state[13] = gid;
+	copy(state + 4, g_nonce + 1, 7);
+
+	for (uint i = 21; i != 50; ++i) {
+		state[i] = 0;
+	}
+
+	state_uchar[84] = 0x01;
+	state_uchar[135] = 0x80;
+
+	// keccak_256
+	keccak_f1600_no_absorb((uint2*) state, 1, isolate);
+	
+	// pick off upper 64 bits of hash
+	__private ulong ulhash = as_ulong(as_uchar8(state_ulong[0]).s76543210);
+
+	if (ulhash < target) {
+		uint slot = min(MAX_OUTPUTS, atomic_inc(&g_output->solutions[0]) + 1);
+		g_output->solutions[slot] = gid;
+	}
+
+
+}
+
 
 /*-----------------------------------------------------------------------------------
 * ethash_search
@@ -649,6 +737,7 @@ __kernel void ethash_search(
 		}
 	}
 }
+
 
 /*-----------------------------------------------------------------------------------
 * ethash_hash  -  generate hashes and return them in their entirety.

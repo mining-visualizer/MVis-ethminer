@@ -763,6 +763,12 @@ private:
 		h256 target;
 		bytes challenge;
 
+		//rpc.testkeccak();
+
+		//h256 test = h256::random();
+		//uint64_t upper = upper64OfHash(test);
+		//uint64_t* upper2 = (uint64_t*)test.data();
+
 		while (true)
 		{
 			try
@@ -839,7 +845,9 @@ private:
 					//LogS << "Our hash : ";
 					//LogS << "0x" << toString(hash);
 					//rpc.testHash(solution, challenge);
-					bool ok = rpc.eth_submitWorkToken(solution, hash);
+
+					//bool ok = rpc.eth_submitWorkToken(solution, hash);
+
 					//bytes hashb(32);
 					//SHA3_256((const ethash_h256_t*) hashb.data(), (const uint8_t*) mix.data(), 84);
 					//rpc.eth_checkWorkToken(solution, challenge, hash, target);
