@@ -144,10 +144,11 @@ bool EthashGPUMiner::report(h256 _nonce)
 	memcpy(&mix[32], sender.data(), 20);
 	memcpy(&mix[52], _nonce.data(), 32);
 	SHA3_256((const ethash_h256_t*) &hash, (const uint8_t*) mix.data(), 84);
-	if (hash < target && submitProof(_nonce))
+	if (hash < target)
 	{
 		return  submitProof(_nonce);
 	}
+	LogS << "Bad solution!";
 	return false;
 }
 
@@ -192,6 +193,8 @@ void EthashGPUMiner::workLoop()
 			startN = w.startNonce | ((uint64_t)index() << (64 - 4 - w.exSizeBits)); // this can support up to 16 devices
 		uint64_t threshold = upper64OfHash(target);
 
+		//threshold = 0x0000000080000000;	// about right
+		//threshold = 0x0000040000000000;	// ETC
 		//m_miner->testHashes();
 
 		m_miner->search(challenge, threshold, *m_hook);

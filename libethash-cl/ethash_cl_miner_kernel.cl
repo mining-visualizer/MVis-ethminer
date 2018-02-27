@@ -506,6 +506,7 @@ typedef union {
 } hash64_t;
 
 typedef union {
+	uchar	 uchars[200 / sizeof(uchar)];
 	uint	 words[200 / sizeof(uint)];
 	uint2	 uint2s[200 / sizeof(uint2)];
 	uint4	 uint4s[200 / sizeof(uint4)];
@@ -618,34 +619,32 @@ static hash32_t compute_hash(
 __attribute__((reqd_work_group_size(GROUP_SIZE, 1, 1)))
 #endif
 __kernel void test_keccak(
-	__constant uint const* g_challenge,			// 32 bytes	(8 uints)
+	__constant uchar const* g_challenge,		// 32 bytes	
 	__constant uint const* g_sender,			// 20 bytes (5 uints)
 	__constant uint const* g_nonce,				// 32 bytes (8 uints)
 	__global volatile uint* restrict g_output,	// 32 bytes (8 uints)
 	uint isolate
 ) {
 	uint const gid = get_global_id(0);
-	if (gid != 0) return;
+	if (gid != 6) return;
 
-	uint state[50];
-	uchar* state_uchar = (uchar*) state;
+	hash200_t state;
 
-	copy(state, g_challenge, 8);
-	copy(state + 8, g_sender, 5);
-	copy(state + 13, g_nonce, 8);
+	copy(state.uchars, g_challenge, 32);
+	copy(state.words + 8, g_sender, 5);
+	copy(state.words + 13, g_nonce, 8);
+	state.words[13] = gid;
 
 	for (uint i = 21; i != 50; ++i) {
-		state[i] = 0;
+		state.words[i] = 0;
 	}
 
-	state_uchar[84] = 0x01;
-	state_uchar[135] = 0x80;
+	state.uchars[84] = 0x01;
+	state.uchars[135] = 0x80;
 
 	// keccak_256
-	keccak_f1600_no_absorb((uint2*) state, 1, isolate);
-
-	copy(g_output, state, 8);
-
+	keccak_f1600_no_absorb((uint2*) &state, 1, isolate);
+	copy(g_output, state.words, 8);
 }
 
 /*-----------------------------------------------------------------------------------
@@ -655,36 +654,40 @@ __kernel void test_keccak(
 __attribute__((reqd_work_group_size(GROUP_SIZE, 1, 1)))
 #endif
 __kernel void bitcoin0x_search(
-	__constant uint const* g_challenge,			// 32 bytes	(8 uints)
+	__constant uchar const* g_challenge,		// 32 bytes	
 	__constant uint const* g_sender,			// 20 bytes (5 uints)
 	__constant uint const* g_nonce,				// 32 bytes (8 uints)
 	__global volatile search_results_t* restrict g_output,	
 	ulong target,
-	uint isolate
-) {
+	uint isolate,
+	__global volatile hash200_t* restrict g_buff		// 200 bytes,	used for debugging
+	) 
+{
 	uint const gid = get_global_id(0);
 
-	uint state[50];
-	uchar* state_uchar = (uchar*) state;
-	ulong* state_ulong = (ulong*) state;
+	//if (gid == 0) {
+	//	copy(g_buff->uchars, g_challenge, 32);
+	//}
 
-	copy(state, g_challenge, 8);
-	copy(state + 8, g_sender, 5);
-	state[13] = gid;
-	copy(state + 4, g_nonce + 1, 7);
+	hash200_t state;
+
+	copy(state.uchars, g_challenge, 32);
+	copy(state.words + 8, g_sender, 5);
+	copy(state.words + 13, g_nonce, 8);
+	state.words[13] = gid;
 
 	for (uint i = 21; i != 50; ++i) {
-		state[i] = 0;
+		state.words[i] = 0;
 	}
 
-	state_uchar[84] = 0x01;
-	state_uchar[135] = 0x80;
+	state.uchars[84] = 0x01;
+	state.uchars[135] = 0x80;
 
 	// keccak_256
-	keccak_f1600_no_absorb((uint2*) state, 1, isolate);
+	keccak_f1600_no_absorb((uint2*) &state, 1, isolate);
 	
 	// pick off upper 64 bits of hash
-	__private ulong ulhash = as_ulong(as_uchar8(state_ulong[0]).s76543210);
+	__private ulong ulhash = as_ulong(as_uchar8(state.ulongs[0]).s76543210);
 
 	if (ulhash < target) {
 		uint slot = min(MAX_OUTPUTS, atomic_inc(&g_output->solutions[0]) + 1);

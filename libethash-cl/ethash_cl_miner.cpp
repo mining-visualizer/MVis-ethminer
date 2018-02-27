@@ -397,6 +397,7 @@ bool ethash_cl_miner::verifyHashes()
 void ethash_cl_miner::testHashes() {
 
 	for (int i = 0; i != 50; ++i) {
+
 		h256 nonce = h256::random();
 		bytes challenge(32);
 		memcpy(challenge.data(), nonce.data(), 32);
@@ -425,18 +426,24 @@ void ethash_cl_miner::testHashes() {
 		testKeccak.setArg(3, hashBuff);
 		testKeccak.setArg(4, ~0u);
 
-		m_queue[0].enqueueNDRangeKernel(testKeccak, cl::NullRange, 1, s_workgroupSize);
+		m_queue[0].enqueueNDRangeKernel(testKeccak, cl::NullRange, 10, s_workgroupSize);
 
 		bytes kernelhash(32);
 		m_queue[0].enqueueReadBuffer(hashBuff, CL_TRUE, 0, 32, kernelhash.data());
 
 		// now compute the hash on the CPU host and compare
-		bytes mix(84);
+		uint32_t mix[21];
 		memcpy(&mix[0], challenge.data(), 32);
-		memcpy(&mix[32], sender.data(), 20);
-		memcpy(&mix[52], nonce.data(), 32);
+		memcpy(&mix[8], sender.data(), 20);
+		memcpy(&mix[13], nonce.data(), 32);
+		mix[13] = 6;
+
+		//uint32_t* x = (uint32_t*) &nonce;
+		//x[0] = 6;
+		//memcpy(&mix[56], nonce.data() + 4, 28);
+
 		bytes hash(32);
-		SHA3_256((const ethash_h256_t*) hash.data(), (const uint8_t*) mix.data(), 84);
+		SHA3_256((const ethash_h256_t*) hash.data(), (const uint8_t*) mix, 84);
 		if (hash != kernelhash) {
 			LogS << "Not equal!";
 		}
@@ -837,8 +844,9 @@ bool ethash_cl_miner::init(unsigned _platformId, unsigned _deviceId)
 		}
 		
 		// buffers
-		m_challenge = cl::Buffer(m_context, CL_MEM_READ_WRITE, 32);
+		m_challenge = cl::Buffer(m_context, CL_MEM_READ_ONLY, 32);
 		m_sender = cl::Buffer(m_context, CL_MEM_READ_ONLY, 20);
+		m_buff = cl::Buffer(m_context, CL_MEM_WRITE_ONLY, 200);		// used for debugging
 
 		for (unsigned i = 0; i != c_bufferCount; ++i)
 		{
@@ -854,6 +862,8 @@ bool ethash_cl_miner::init(unsigned _platformId, unsigned _deviceId)
 		m_queue[0].enqueueWriteBuffer(m_sender, CL_TRUE, 0, 20, sender.data());
 		m_searchKernel.setArg(1, m_sender);
 		m_searchKernel.setArg(5, ~0u);		// isolate argument
+		m_searchKernel.setArg(6, m_buff);
+
 
 	}
 	catch (cl::Error const& err)
@@ -887,7 +897,7 @@ void ethash_cl_miner::search(bytes _challenge, uint64_t _target, search_hook& _h
 		}
 
 		h256 nonce;
-		m_queue[0].enqueueWriteBuffer(m_challenge, CL_TRUE, 0, 32, &_challenge);
+		m_queue[0].enqueueWriteBuffer(m_challenge, CL_TRUE, 0, 32, _challenge.data());
 		m_searchKernel.setArg(0, m_challenge);
 		m_searchKernel.setArg(4, _target);
 
@@ -950,6 +960,7 @@ void ethash_cl_miner::search(bytes _challenge, uint64_t _target, search_hook& _h
 			{
 				m_searchKernel.setArg(3, m_searchBuffer[m_buf]);
 				nonce = h256::random();
+				//LogS << nonce.hex();
 				m_queue[m_buf].enqueueWriteBuffer(m_nonceBuffer[m_buf], CL_TRUE, 0, 32, nonce.data());
 				m_searchKernel.setArg(2, m_nonceBuffer[m_buf]);
 
@@ -973,11 +984,18 @@ void ethash_cl_miner::search(bytes _challenge, uint64_t _target, search_hook& _h
 
 				kernelTime = std::chrono::duration_cast<std::chrono::milliseconds>(SteadyClock::now() - kernelStartTime).count();
 				unsigned num_found = min<unsigned>(m_results[batch.buf]->solutions[0], c_maxSearchResults);
+				if (num_found > 0) {
+					bytes buff(32);
+					m_queue[batch.buf].enqueueReadBuffer(m_buff, CL_TRUE, 0, 32, buff.data());
+				}
 				h256 nonces[c_maxSearchResults];
 				for (unsigned i = 0; i != num_found; ++i) {
 					nonces[i] = batch.nonce;
+					//LogS << nonces[i];
 					uint32_t* x = (uint32_t*) &nonces[i];
 					x[0] = m_results[batch.buf]->solutions[i + 1];
+					//LogS << nonces[i];
+					//LogS;
 				}
 
 				m_queue[batch.buf].enqueueUnmapMemObject(m_searchBuffer[batch.buf], m_results[batch.buf]);

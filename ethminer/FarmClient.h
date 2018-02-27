@@ -8,13 +8,17 @@
 #include <jsonrpccpp/client.h>
 #include <ethminer/SignTx.h>
 #include <libethash/sha3_cryptopp.h>
+#include <iostream>
+#include <fstream>
+#include <sstream>
+#include <boost/filesystem.hpp>
 
 using namespace std;
 using namespace dev;
 using namespace dev::eth;
 
-//#define TOKEN_CONTRACT "0xb6ed7644c69416d67b522e20bc294a9a9b405b31"	// main net
-#define TOKEN_CONTRACT "0x48354a052CDd707B909daE507aD7F6E2DC065082"		// ETC test contract
+#define TOKEN_CONTRACT "0xb6ed7644c69416d67b522e20bc294a9a9b405b31"	// main net
+//#define TOKEN_CONTRACT "0x48354a052CDd707B909daE507aD7F6E2DC065082"		// ETC test contract
 
 
 
@@ -176,6 +180,29 @@ class FarmClient : public jsonrpc::Client
 public:
 	FarmClient(jsonrpc::IClientConnector &conn, jsonrpc::clientVersion_t type = jsonrpc::JSONRPC_CLIENT_V2) : jsonrpc::Client(conn, type) {}
 
+	int tokenBalance() {
+		Json::Value p;
+		p["from"] = MINER_ACCOUNT;			// ETH address (Jaxx HD)
+		p["to"] = TOKEN_CONTRACT;			// 0xbitcoin contract address
+
+		h256 bMethod = sha3("balanceOf(address)");
+		std::string sMethod = toHex(bMethod, dev::HexPrefix::Add);
+		p["data"] = sMethod.substr(0, 10);
+
+		// address
+		sMethod = sMethod + std::string(MINER_ACCOUNT).substr(2);
+
+		Json::Value data;
+		data.append(p);
+		data.append("latest");
+
+		Json::Value result = this->CallMethod("eth_call", data);
+		if (result.isString()) {
+			return atoi(result.asCString());
+		} else
+			throw jsonrpc::JsonRpcException(jsonrpc::Errors::ERROR_CLIENT_INVALID_RESPONSE, result.toStyledString());
+	}
+
 	void testkeccak() {
 		h256 nonce = h256::random();
 		bytes challenge(32);
@@ -243,6 +270,7 @@ public:
 		Json::Value p;
 		p["from"] = MINER_ACCOUNT;			// ETH address (Jaxx HD)
 		p["to"] = TOKEN_CONTRACT;			// 0xbitcoin contract address
+
 		h256 bMethod = sha3("getChallengeNumber()");
 		std::string sMethod = toHex(bMethod, dev::HexPrefix::Add);
 		p["data"] = sMethod.substr(0, 10);
@@ -256,6 +284,7 @@ public:
 			_challenge = fromHex(result.asString());
 		} else
 			throw jsonrpc::JsonRpcException(jsonrpc::Errors::ERROR_CLIENT_INVALID_RESPONSE, result.toStyledString());
+		LogF << "Trace: eth_getWork_token, Challenge : " << toHex(_challenge);
 
 		// target
 		bMethod = sha3("getMiningTarget()");
@@ -333,7 +362,31 @@ public:
 			throw jsonrpc::JsonRpcException(jsonrpc::Errors::ERROR_CLIENT_INVALID_RESPONSE, result.toStyledString());
 	}
 
-	bool eth_submitWorkToken(h256 _nonce, bytes _hash) throw (jsonrpc::JsonRpcException) {
+	bool eth_submitWorkToken(h256 _nonce, bytes _hash, bytes _challenge) throw (jsonrpc::JsonRpcException) {
+
+		try {
+			// check if the other miner already submitted a solution for this challenge
+			boost::filesystem::path m_challengeFilename = boost::filesystem::path(ProgOpt::Get("0xBitcoin", "ChallengeFolder")) / "challenge.txt";
+			ifstream ifs;
+			if (boost::filesystem::exists(m_challengeFilename)) {
+				string s;
+				ifs.open(m_challengeFilename.generic_string(), fstream::in);
+				getlineEx(ifs, s);
+				if (s == toHex(_challenge)) {
+					LogS << "The other miner already got this one : " << toHex(_challenge).substr(0, 8);
+					return false;
+				}
+			}
+			ifs.close();
+			// write this challenge value to our synchronization file.
+			std::ofstream ofs(m_challengeFilename.generic_string(), std::ofstream::out);
+			ofs << toHex(_challenge);
+			ofs.close();
+		}
+		catch (const std::exception& e) {
+			LogB << "Exception: eth_submitWorkToken - " << e.what();
+		}
+
 
 		// get transaction count for nonce
 		Json::Value p;
@@ -348,8 +401,9 @@ public:
 		Transaction t;
 		t.nonce = nonce;
 		t.receiveAddress = toAddress(TOKEN_CONTRACT);
-		t.gas = u256(200000);
-		t.gasPrice = u256(10000000000);
+		t.gas = u256(119840);
+		ProgOpt::Load("");
+		t.gasPrice = u256(ProgOpt::Get("0xBitcoin", "GasPrice")) * 1000000000;	// convert gwei to wei
 
 		// compute data parameter : first 4 bytes is hash of function signature
 		h256 bMethod = sha3("mint(uint256,bytes32)");
@@ -368,7 +422,7 @@ public:
 		t.data = fromHex(sMethod);
 		t.value = 0;
 
-		Secret pk = Secret("d1ced27471f165c1d42b2e225c416125fa998900a2865b2168686c34e5520e24");
+		Secret pk = Secret(MINER_PK);
 		t.sign(pk);
 		ss = std::stringstream();
 		ss << "0x" << toHex(t.rlp());
@@ -378,7 +432,7 @@ public:
 		p.append(ss.str());
 		//LogS << "Raw transaction to send : " << ss.str();
 		result = this->CallMethod("eth_sendRawTransaction", p);
-		//cout << "tx send result : " << result.asString() << endl;
+		LogS << "Tx hash : " << result.asString();
 		return true;
 	}
 

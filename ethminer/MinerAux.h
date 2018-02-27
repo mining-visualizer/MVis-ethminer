@@ -29,6 +29,7 @@
 #include <iostream>
 #include <signal.h>
 #include <random>
+#include <queue>
 
 #include <boost/algorithm/string.hpp>
 #include <boost/algorithm/string/trim_all.hpp>
@@ -762,12 +763,10 @@ private:
 		EthashProofOfWork::WorkPackage current, previous;
 		h256 target;
 		bytes challenge;
+		deque<bytes> recentChallenges;
 
-		//rpc.testkeccak();
 
-		//h256 test = h256::random();
-		//uint64_t upper = upper64OfHash(test);
-		//uint64_t* upper2 = (uint64_t*)test.data();
+		//int tokenBalance = rpc.tokenBalance();
 
 		while (true)
 		{
@@ -806,16 +805,25 @@ private:
 
 					if (_challenge != challenge)
 					{
-						LogB << "Trace: doFarm, New challenge : " << toHex(_challenge);
-						try
-						{
-							f.currentBlock = mvisRPC->getBlockNumber() + 1;
+						bool seenBefore = false;
+						for (bytes c : recentChallenges) {
+							seenBefore = (seenBefore || (c == _challenge));
 						}
-						catch (...) {}
-						challenge = _challenge;
-						target = _target;
-						f.setWork_token(challenge, target);
-						lastBlockTime.restart();
+						if (!seenBefore) {
+							recentChallenges.push_front(_challenge);
+							if (recentChallenges.size() > 5)
+								recentChallenges.pop_back();
+							challenge = _challenge;
+							target = _target;
+							LogS << "New challenge : " << toHex(_challenge).substr(0, 8);
+							try {
+								f.currentBlock = mvisRPC->getBlockNumber() + 1;
+							}
+							catch (...) {}
+							f.setWork_token(challenge, target);
+							lastBlockTime.restart();
+						}
+
 					}
 
 					if (lastBlockTime.elapsedSeconds() > m_worktimeout && failOverAvailable())
@@ -846,7 +854,7 @@ private:
 					//LogS << "0x" << toString(hash);
 					//rpc.testHash(solution, challenge);
 
-					//bool ok = rpc.eth_submitWorkToken(solution, hash);
+					bool ok = rpc.eth_submitWorkToken(solution, hash, challenge);
 
 					//bytes hashb(32);
 					//SHA3_256((const ethash_h256_t*) hashb.data(), (const uint8_t*) mix.data(), 84);
