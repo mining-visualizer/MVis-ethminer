@@ -137,7 +137,7 @@ EthashGPUMiner::~EthashGPUMiner()
 bool EthashGPUMiner::report(h256 _nonce)
 {
 	// verify the solution
-	h160 sender(MINER_ACCOUNT);
+	h160 sender(m_farm->minerAcct);
 	h256 hash;
 	bytes mix(84);
 	memcpy(&mix[0], challenge.data(), 32);
@@ -145,10 +145,8 @@ bool EthashGPUMiner::report(h256 _nonce)
 	memcpy(&mix[52], _nonce.data(), 32);
 	SHA3_256((const ethash_h256_t*) &hash, (const uint8_t*) mix.data(), 84);
 	if (hash < target)
-	{
 		return  submitProof(_nonce);
-	}
-	LogS << "Bad solution!";
+	LogB << "Solution found, but invalid.  Possible hash fault.";
 	return false;
 }
 
@@ -180,7 +178,7 @@ void EthashGPUMiner::workLoop()
 			m_miner = new ethash_cl_miner(this);
 			m_device = s_devices[index()] > -1 ? s_devices[index()] : index();
 
-			if (!m_miner->init(s_platformId, m_device))
+			if (!m_miner->init(s_platformId, m_device, h160(m_farm->minerAcct)))
 				throw cl::Error(-1, "cl_miner.init failed!");
 
 			s_dagLoadIndex++;
@@ -304,7 +302,8 @@ void dev::eth::EthashGPUMiner::exportDAG(unsigned _block)
 	light = EthashAux::light(seedHash);
 	bytesConstRef lightData = light->data();
 
-	if (!miner->init(s_platformId, 0))
+	string minerAcct = ProgOpt::Get("0xBitcoin", "MinerAcct");
+	if (!miner->init(s_platformId, 0, h160(minerAcct)))
 		throw cl::Error(-1, "cl_miner.init failed!");
 
 	miner->exportDAG(seedHash.hex().substr(0, 16));

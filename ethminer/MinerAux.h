@@ -732,13 +732,13 @@ private:
 	/*-----------------------------------------------------------------------------------
 	* positionedOutput
 	*----------------------------------------------------------------------------------*/
-	void positionedOutput(GenericFarm<EthashProofOfWork> &f, Timer lastBlockTime)
+	void positionedOutput(GenericFarm<EthashProofOfWork> &f, Timer lastBlockTime, uint64_t tokenBalance)
 	{
 		f.hashRates().update();
 		LogXY(1, 1) << "Rates:" << f.hashRates() << " | Temp: " << f.getMinerTemps() << " | Fan: " << f.getFanSpeeds() << "         ";
 		LogXY(1, 2) << "Block #: " << f.currentBlock << " | Block time: " << elapsedSeconds(lastBlockTime)
 			<< " | Target: " << upper64OfHash(f.boundary()) << "         ";
-		LogXY(1, 3) << "Best hash: " << f.bestHash() << " | " << f.getCloseHits() << " | Solutions: " << f.getSolutionStats().getAccepts()
+		LogXY(1, 3) << "Best hash: " << f.bestHash() << " | Tokens: " << tokenBalance << " | Solutions: " << f.getSolutionStats().getAccepts()
 			<< " | Hash faults: " << f.getHashFaults() << "         ";
 	}
 
@@ -750,6 +750,7 @@ private:
 	{
 		Timer lastHashRateDisplay;
 		Timer lastBlockTime;
+		Timer lastBalanceCheck;
 
 		unsigned farmRetries = 0;
 		int maxRetries = failOverAvailable() ? m_maxFarmRetries : c_StopWorkAt;
@@ -765,8 +766,7 @@ private:
 		bytes challenge;
 		deque<bytes> recentChallenges;
 
-
-		//int tokenBalance = rpc.tokenBalance();
+		int tokenBalance = rpc.tokenBalance();
 
 		while (true)
 		{
@@ -787,9 +787,13 @@ private:
 					{
 						if (lastHashRateDisplay.elapsedSeconds() >= 2.0 && f.isMining())
 						{
-							positionedOutput(f, lastBlockTime);
+							positionedOutput(f, lastBlockTime, tokenBalance);
 							lastHashRateDisplay.restart();
 						}
+					}
+					if (lastBalanceCheck.elapsedSeconds() >= 30.0) {
+						tokenBalance = rpc.tokenBalance();
+						lastBalanceCheck.restart();
 					}
 
 					h256 _target;
@@ -805,6 +809,8 @@ private:
 
 					if (_challenge != challenge)
 					{
+						// when queried for the most recent challenge, infura nodes will occasionally respond 
+						// with the one previous.
 						bool seenBefore = false;
 						for (bytes c : recentChallenges) {
 							seenBefore = (seenBefore || (c == _challenge));
@@ -839,33 +845,21 @@ private:
 				if (f.shutDown)
 					break;
 
-				LogB << "Solution found; Submitting to node ...";
-				LogF << "Trace: doFarm, nonce=" << toString(solution) << ",  challenge=" << toHex(challenge);
-
 				bytes hash(32);
 				bytes mix(84);
-				h160 sender(MINER_ACCOUNT);
+				h160 sender(f.minerAcct);
 				memcpy(&mix[0], challenge.data(), 32);
 				memcpy(&mix[32], sender.data(), 20);
 				memcpy(&mix[52], solution.data(), 32);
 				SHA3_256((const ethash_h256_t*) hash.data(), (const uint8_t*) mix.data(), 84);
 				if (h256(hash) < target) {
-					//LogS << "Our hash : ";
-					//LogS << "0x" << toString(hash);
-					//rpc.testHash(solution, challenge);
-
+					LogB << "Solution found; Submitting to node ...";
 					bool ok = rpc.eth_submitWorkToken(solution, hash, challenge);
-
-					//bytes hashb(32);
-					//SHA3_256((const ethash_h256_t*) hashb.data(), (const uint8_t*) mix.data(), 84);
-					//rpc.eth_checkWorkToken(solution, challenge, hash, target);
-					//f.solutionFound(ok ? SolutionState::Accepted : SolutionState::Rejected, false, solutionMiner);
+					f.solutionFound(SolutionState::Accepted, false, solutionMiner);
 				} else {
-					LogS << "Bad solution!";
+					LogB << "Solution found, but invalid.  Possibly stale.";
+					f.solutionFound(SolutionState::Accepted, true, solutionMiner);
 				}
-
-
-				//challenge.clear();
 			}
 			catch (jsonrpc::JsonRpcException& e)
 			{
@@ -920,7 +914,7 @@ out:
 		{
 			if (lastHashRateDisplay.elapsedSeconds() >= 2.0 && client.isConnected() && f.isMining())
 			{
-				positionedOutput(f, lastBlockTime);
+				positionedOutput(f, lastBlockTime, 0);
 				lastHashRateDisplay.restart();
 			}
 			this_thread::sleep_for(chrono::milliseconds(200));

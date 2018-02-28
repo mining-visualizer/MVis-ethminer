@@ -17,12 +17,6 @@ using namespace std;
 using namespace dev;
 using namespace dev::eth;
 
-#define TOKEN_CONTRACT "0xb6ed7644c69416d67b522e20bc294a9a9b405b31"	// main net
-//#define TOKEN_CONTRACT "0x48354a052CDd707B909daE507aD7F6E2DC065082"		// ETC test contract
-
-
-
-
 
 
 /** libkeccak-tiny
@@ -178,27 +172,38 @@ int sha3_256(uint8_t* out, size_t outlen, const uint8_t* in, size_t inlen) {
 class FarmClient : public jsonrpc::Client
 {
 public:
-	FarmClient(jsonrpc::IClientConnector &conn, jsonrpc::clientVersion_t type = jsonrpc::JSONRPC_CLIENT_V2) : jsonrpc::Client(conn, type) {}
 
-	int tokenBalance() {
+	FarmClient(jsonrpc::IClientConnector &conn, jsonrpc::clientVersion_t type = jsonrpc::JSONRPC_CLIENT_V2) : jsonrpc::Client(conn, type) 
+	{
+		m_minerAcct = ProgOpt::Get("0xBitcoin", "MinerAcct");
+		m_tokenContract = ProgOpt::Get("0xBitcoin", "TokenContract");
+		m_acctPK = ProgOpt::Get("0xBitcoin", "AcctPK");
+	}
+
+	uint64_t tokenBalance() {
 		Json::Value p;
-		p["from"] = MINER_ACCOUNT;			// ETH address (Jaxx HD)
-		p["to"] = TOKEN_CONTRACT;			// 0xbitcoin contract address
+		p["from"] = m_minerAcct;			// ETH address (Jaxx HD)
+		p["to"] = m_tokenContract;			// 0xbitcoin contract address
 
 		h256 bMethod = sha3("balanceOf(address)");
 		std::string sMethod = toHex(bMethod, dev::HexPrefix::Add);
-		p["data"] = sMethod.substr(0, 10);
+		sMethod = sMethod.substr(0, 10);
 
 		// address
-		sMethod = sMethod + std::string(MINER_ACCOUNT).substr(2);
+		stringstream ss;
+		ss << std::setw(64) << std::setfill('0') << m_minerAcct.substr(2);
+		std::string s2(ss.str());
+		sMethod = sMethod + s2;
+		p["data"] = sMethod;
 
 		Json::Value data;
 		data.append(p);
 		data.append("latest");
 
 		Json::Value result = this->CallMethod("eth_call", data);
+		u256 balance = u256(result.asString()) / 100000000;
 		if (result.isString()) {
-			return atoi(result.asCString());
+			return static_cast<uint64_t>(balance);
 		} else
 			throw jsonrpc::JsonRpcException(jsonrpc::Errors::ERROR_CLIENT_INVALID_RESPONSE, result.toStyledString());
 	}
@@ -211,7 +216,7 @@ public:
 
 		bytes mix(84);
 		memcpy(&mix[0], challenge.data(), 32);
-		h160 sender(MINER_ACCOUNT);
+		h160 sender(m_minerAcct);
 		memcpy(&mix[32], sender.data(), 20);
 		memcpy(&mix[52], nonce.data(), 32);
 		bytes hash(32);
@@ -227,7 +232,7 @@ public:
 
 		// get transaction count for nonce
 		Json::Value p;
-		p.append(MINER_ACCOUNT);
+		p.append(m_minerAcct);
 		p.append("latest");
 		Json::Value result = this->CallMethod("eth_getTransactionCount", p);
 		std::istringstream converter(result.asString());
@@ -268,8 +273,8 @@ public:
 	void eth_getWork_token(bytes& _challenge, h256& _target) throw (jsonrpc::JsonRpcException) {
 		// challenge
 		Json::Value p;
-		p["from"] = MINER_ACCOUNT;			// ETH address (Jaxx HD)
-		p["to"] = TOKEN_CONTRACT;			// 0xbitcoin contract address
+		p["from"] = m_minerAcct;			// ETH address (Jaxx HD)
+		p["to"] = m_tokenContract;			// 0xbitcoin contract address
 
 		h256 bMethod = sha3("getChallengeNumber()");
 		std::string sMethod = toHex(bMethod, dev::HexPrefix::Add);
@@ -307,8 +312,8 @@ public:
 		std::vector<byte> mix(84);
 		std::ostringstream ss;
 		Json::Value p;
-		p["from"] = MINER_ACCOUNT;		// ETH address (Jaxx HD)
-		p["to"] = TOKEN_CONTRACT;		// 0xbitcoin contract address
+		p["from"] = m_minerAcct;		// ETH address (Jaxx HD)
+		p["to"] = m_tokenContract;		// 0xbitcoin contract address
 
 		// function signature
 		h256 bMethod = sha3("getMintDigest(uint256,bytes32)");
@@ -338,7 +343,7 @@ public:
 			LogS << "test hash";
 			LogS << result.asString();
 
-			h160 sender(MINER_ACCOUNT);
+			h160 sender(m_tokenContract);
 			memcpy(&mix[0], challenge.data(), 32);
 			memcpy(&mix[32], sender.data(), 20);
 			bytes hash(32);
@@ -390,7 +395,7 @@ public:
 
 		// get transaction count for nonce
 		Json::Value p;
-		p.append(MINER_ACCOUNT);
+		p.append(m_minerAcct);
 		p.append("latest");
 		Json::Value result = this->CallMethod("eth_getTransactionCount", p);
 		std::istringstream converter(result.asString());
@@ -400,8 +405,9 @@ public:
 		// prepare transaction
 		Transaction t;
 		t.nonce = nonce;
-		t.receiveAddress = toAddress(TOKEN_CONTRACT);
-		t.gas = u256(119840);
+		t.receiveAddress = toAddress(m_tokenContract);
+		//t.gas = u256(119840);
+		t.gas = u256(219840);
 		ProgOpt::Load("");
 		t.gasPrice = u256(ProgOpt::Get("0xBitcoin", "GasPrice")) * 1000000000;	// convert gwei to wei
 
@@ -422,7 +428,7 @@ public:
 		t.data = fromHex(sMethod);
 		t.value = 0;
 
-		Secret pk = Secret(MINER_PK);
+		Secret pk = Secret(m_acctPK);
 		t.sign(pk);
 		ss = std::stringstream();
 		ss << "0x" << toHex(t.rlp());
@@ -440,8 +446,8 @@ public:
 		// this calls the mint(nonce, challenge) function using eth_call so it can check the return result
 		std::ostringstream ss;
 		Json::Value p;
-		p["from"] = MINER_ACCOUNT;		// ETH address (Jaxx HD)
-		p["to"] = TOKEN_CONTRACT;		// 0xbitcoin contract address
+		p["from"] = m_minerAcct;		// ETH address (Jaxx HD)
+		p["to"] = m_tokenContract;		// 0xbitcoin contract address
 
 		// function signature
 		h256 bMethod = sha3("mint(uint256,bytes32)");
@@ -516,6 +522,11 @@ public:
 		else
 			throw jsonrpc::JsonRpcException(jsonrpc::Errors::ERROR_CLIENT_INVALID_RESPONSE, result.toStyledString());
 	}
+
+private:
+	string m_minerAcct;
+	string m_acctPK;
+	string m_tokenContract;
 
 };
 

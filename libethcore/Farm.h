@@ -187,6 +187,8 @@ public:
 			closeHitThreshold = std::stoull(ProgOpt::Get("CloseHits", "CloseHitThreshold").c_str());
 			workUnitFreq = std::stoull(ProgOpt::Get("CloseHits", "WorkUnitFrequency").c_str());
 		}
+		minerAcct = ProgOpt::Get("0xBitcoin", "MinerAcct");
+		acctPK = ProgOpt::Get("0xBitcoin", "AcctPK");
 	}
 
 	~GenericFarm()
@@ -493,7 +495,7 @@ public:
 
 		if (_state == SolutionState::Accepted)
 		{
-			LogB << ":) Submitted and accepted.";
+			//LogB << ":) Submitted and accepted.";
 			if (_stale)
 				m_solutionStats.acceptedStale();
 			else
@@ -501,7 +503,7 @@ public:
 		}
 		else if (_state == SolutionState::Rejected)
 		{
-			LogB << ":-( Not accepted.";
+			//LogB << ":-( Not accepted.";
 			if (_stale)
 				m_solutionStats.rejectedStale();
 			else
@@ -509,7 +511,7 @@ public:
 		}
 		else
 		{
-			LogB << "FAILURE: GPU gave incorrect result!";
+			//LogB << "FAILURE: GPU gave incorrect result!";
 			m_solutionStats.failed();
 		}
 
@@ -743,7 +745,8 @@ public:
 	// this will get set true in case of thermal runaway.
 	bool shutDown = false;
 
-
+	string minerAcct;
+	string acctPK;
 
 private:
 	mutable SharedMutex x_minerWork;

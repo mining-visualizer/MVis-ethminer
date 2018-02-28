@@ -665,25 +665,21 @@ __kernel void bitcoin0x_search(
 {
 	uint const gid = get_global_id(0);
 
-	//if (gid == 0) {
-	//	copy(g_buff->uchars, g_challenge, 32);
-	//}
-
 	hash200_t state;
-
 	copy(state.uchars, g_challenge, 32);
 	copy(state.words + 8, g_sender, 5);
 	copy(state.words + 13, g_nonce, 8);
+	// overwrite the upper 4 bytes of the nonce with the work item #, that way every
+	// work item is computing for a different nonce.
 	state.words[13] = gid;
 
 	for (uint i = 21; i != 50; ++i) {
 		state.words[i] = 0;
 	}
 
+	// keccak_256
 	state.uchars[84] = 0x01;
 	state.uchars[135] = 0x80;
-
-	// keccak_256
 	keccak_f1600_no_absorb((uint2*) &state, 1, isolate);
 	
 	// pick off upper 64 bits of hash

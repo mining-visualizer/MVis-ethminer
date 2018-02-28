@@ -394,7 +394,7 @@ bool ethash_cl_miner::verifyHashes()
 }
 
 
-void ethash_cl_miner::testHashes() {
+void ethash_cl_miner::testHashes(string _minerAcct) {
 
 	for (int i = 0; i != 50; ++i) {
 
@@ -402,7 +402,7 @@ void ethash_cl_miner::testHashes() {
 		bytes challenge(32);
 		memcpy(challenge.data(), nonce.data(), 32);
 		nonce = h256::random();
-		h160 sender(MINER_ACCOUNT);
+		h160 sender(_minerAcct);
 
 		cl::Program program = m_programCL;
 		cl::Kernel testKeccak(program, "test_keccak");
@@ -723,7 +723,7 @@ uint64_t ethash_cl_miner::nextNonceIndex(uint64_t &_nonceIndex, bool _overrideRa
 }
 
 
-bool ethash_cl_miner::init(unsigned _platformId, unsigned _deviceId)
+bool ethash_cl_miner::init(unsigned _platformId, unsigned _deviceId, h160 _miningAccount)
 {
 	// get all platforms
 	try
@@ -858,8 +858,7 @@ bool ethash_cl_miner::init(unsigned _platformId, unsigned _deviceId)
 			m_nonceBuffer[i] = cl::Buffer(m_context, CL_MEM_READ_ONLY, 32);
 		}
 
-		h160 sender(MINER_ACCOUNT);
-		m_queue[0].enqueueWriteBuffer(m_sender, CL_TRUE, 0, 20, sender.data());
+		m_queue[0].enqueueWriteBuffer(m_sender, CL_TRUE, 0, 20, _miningAccount.data());
 		m_searchKernel.setArg(1, m_sender);
 		m_searchKernel.setArg(5, ~0u);		// isolate argument
 		m_searchKernel.setArg(6, m_buff);
@@ -960,7 +959,6 @@ void ethash_cl_miner::search(bytes _challenge, uint64_t _target, search_hook& _h
 			{
 				m_searchKernel.setArg(3, m_searchBuffer[m_buf]);
 				nonce = h256::random();
-				//LogS << nonce.hex();
 				m_queue[m_buf].enqueueWriteBuffer(m_nonceBuffer[m_buf], CL_TRUE, 0, 32, nonce.data());
 				m_searchKernel.setArg(2, m_nonceBuffer[m_buf]);
 
@@ -983,19 +981,20 @@ void ethash_cl_miner::search(bytes _challenge, uint64_t _target, search_hook& _h
 				m_mapEvents[batch.buf].wait();
 
 				kernelTime = std::chrono::duration_cast<std::chrono::milliseconds>(SteadyClock::now() - kernelStartTime).count();
+
 				unsigned num_found = min<unsigned>(m_results[batch.buf]->solutions[0], c_maxSearchResults);
-				if (num_found > 0) {
-					bytes buff(32);
-					m_queue[batch.buf].enqueueReadBuffer(m_buff, CL_TRUE, 0, 32, buff.data());
-				}
+				//if (num_found > 0) {		// for debugging
+				//	bytes buff(32);
+				//	m_queue[batch.buf].enqueueReadBuffer(m_buff, CL_TRUE, 0, 32, buff.data());
+				//}
 				h256 nonces[c_maxSearchResults];
 				for (unsigned i = 0; i != num_found; ++i) {
+					// in the kernel, the upper 4 bytes of the nonce passed in is overwritten with the
+					// kernel work item #, so that each work item is hashing with a different nonce.
+					// so we do the same thing here so we can check the result.
 					nonces[i] = batch.nonce;
-					//LogS << nonces[i];
 					uint32_t* x = (uint32_t*) &nonces[i];
 					x[0] = m_results[batch.buf]->solutions[i + 1];
-					//LogS << nonces[i];
-					//LogS;
 				}
 
 				m_queue[batch.buf].enqueueUnmapMemObject(m_searchBuffer[batch.buf], m_results[batch.buf]);
