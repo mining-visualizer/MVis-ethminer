@@ -791,8 +791,9 @@ private:
 							lastHashRateDisplay.restart();
 						}
 					}
-					if (lastBalanceCheck.elapsedSeconds() >= 30.0) {
+					if (lastBalanceCheck.elapsedSeconds() >= 15) {
 						tokenBalance = rpc.tokenBalance();
+						rpc.checkPendingTransactions();
 						lastBalanceCheck.restart();
 					}
 
@@ -828,6 +829,9 @@ private:
 							catch (...) {}
 							f.setWork_token(challenge, target);
 							lastBlockTime.restart();
+
+							rpc.eth_getLastBlockData();
+
 						}
 
 					}

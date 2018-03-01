@@ -173,11 +173,47 @@ class FarmClient : public jsonrpc::Client
 {
 public:
 
+	enum TxStatus
+	{
+		Succeeded,
+		Failed,
+		NotFound
+	};
+
+	// Constructor
 	FarmClient(jsonrpc::IClientConnector &conn, jsonrpc::clientVersion_t type = jsonrpc::JSONRPC_CLIENT_V2) : jsonrpc::Client(conn, type) 
 	{
 		m_minerAcct = ProgOpt::Get("0xBitcoin", "MinerAcct");
 		m_tokenContract = ProgOpt::Get("0xBitcoin", "TokenContract");
 		m_acctPK = ProgOpt::Get("0xBitcoin", "AcctPK");
+	}
+
+	TxStatus getTxStatus(string _txHash) {
+		Json::Value data;
+		data.append(_txHash);
+		try {
+			Json::Value result = this->CallMethod("eth_getTransactionReceipt", data);
+			return result["status"] == "0x1" ? TxStatus::Succeeded : TxStatus::Failed;
+		}
+		catch (...) {
+			return TxStatus::NotFound;
+		}
+	}
+
+	void checkPendingTransactions() {
+		deque<string>::iterator it;
+		for (it = m_pendingTransactions.begin(); it != m_pendingTransactions.end(); ) {
+			TxStatus status = getTxStatus(*it);
+			if (status == Succeeded)
+				LogB << "Tx " << (*it).substr(0, 10) << " succeeded :)";
+			else if (status == Failed)
+				LogB << "Tx " << (*it).substr(0, 10) << " failed :(";
+
+			if (status == NotFound) 
+				++it;
+			else 
+				it = m_pendingTransactions.erase(it);
+		}
 	}
 
 	int getNextNonce() {
@@ -320,6 +356,47 @@ public:
 
 	}
 
+	void eth_getLastBlockData() throw (jsonrpc::JsonRpcException) {
+		string lastRewardTo;
+		u256 lastRewardEthBlockNumber;
+
+		// lastRewardTo
+		Json::Value p;
+		p["from"] = m_minerAcct;			// ETH address (Jaxx HD)
+		p["to"] = m_tokenContract;			// 0xbitcoin contract address
+
+		h256 bMethod = sha3("lastRewardTo()");
+		std::string sMethod = toHex(bMethod, dev::HexPrefix::Add);
+		p["data"] = sMethod.substr(0, 10);
+
+		Json::Value data;
+		data.append(p);
+		data.append("latest");
+
+		Json::Value result = this->CallMethod("eth_call", data);
+		if (result.isString()) {
+			lastRewardTo = "0x" + result.asString().substr(26);
+		} else
+			throw jsonrpc::JsonRpcException(jsonrpc::Errors::ERROR_CLIENT_INVALID_RESPONSE, result.toStyledString());
+
+		// lastRewardEthBlockNumber
+		bMethod = sha3("lastRewardEthBlockNumber()");
+		sMethod = toHex(bMethod, dev::HexPrefix::Add);
+		p["data"] = sMethod.substr(0, 10);
+
+		data.clear();
+		data.append(p);
+		data.append("latest");
+
+		result = this->CallMethod("eth_call", data);
+		if (result.isString()) {
+			lastRewardEthBlockNumber = u256(result.asString());
+		} else
+			throw jsonrpc::JsonRpcException(jsonrpc::Errors::ERROR_CLIENT_INVALID_RESPONSE, result.toStyledString());
+
+		LogD << "Last reward to : " << lastRewardTo << ", block : " << lastRewardEthBlockNumber;
+	}
+
 	void testHash(h256 nonce, bytes challenge)  throw (jsonrpc::JsonRpcException) {
 		std::vector<byte> mix(84);
 		std::ostringstream ss;
@@ -447,7 +524,8 @@ public:
 		p.append(ss.str());
 		//LogS << "Raw transaction to send : " << ss.str();
 		Json::Value result = this->CallMethod("eth_sendRawTransaction", p);
-		LogS << "Tx hash : " << result.asString();
+		LogB << "Tx hash : " << result.asString();
+		m_pendingTransactions.push_back(result.asString());
 		return true;
 	}
 
@@ -538,6 +616,7 @@ private:
 	string m_tokenContract;
 	int m_txNonce = -1;
 	Timer m_lastSolution;
+	deque<string> m_pendingTransactions;
 
 
 };
