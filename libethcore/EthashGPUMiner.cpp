@@ -137,6 +137,7 @@ EthashGPUMiner::~EthashGPUMiner()
 bool EthashGPUMiner::report(h256 _nonce)
 {
 	// verify the solution
+	LogF << "Trace: EthashGPUMiner::report, challenge = " << toHex(challenge).substr(0, 8) << ", miner[" << m_index << "]";
 	h160 sender(m_farm->minerAcct);
 	h256 hash;
 	bytes mix(84);

@@ -202,7 +202,7 @@ public:
 	*----------------------------------------------------------------------------------*/
 	void setWork_token(bytes _challenge, h256 _target)
 	{
-		LogF << "Trace: GenericFarm::setWork";
+		LogF << "Trace: GenericFarm::setWork, challenge=" << toHex(_challenge).substr(0, 8);
 		if (m_onSetWork)
 			m_onSetWork(upper64OfHash(_target));
 

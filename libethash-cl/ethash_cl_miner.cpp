@@ -983,10 +983,6 @@ void ethash_cl_miner::search(bytes _challenge, uint64_t _target, search_hook& _h
 				kernelTime = std::chrono::duration_cast<std::chrono::milliseconds>(SteadyClock::now() - kernelStartTime).count();
 
 				unsigned num_found = min<unsigned>(m_results[batch.buf]->solutions[0], c_maxSearchResults);
-				//if (num_found > 0) {		// for debugging
-				//	bytes buff(32);
-				//	m_queue[batch.buf].enqueueReadBuffer(m_buff, CL_TRUE, 0, 32, buff.data());
-				//}
 				h256 nonces[c_maxSearchResults];
 				for (unsigned i = 0; i != num_found; ++i) {
 					// in the kernel, the upper 4 bytes of the nonce passed in is overwritten with the
@@ -998,13 +994,12 @@ void ethash_cl_miner::search(bytes _challenge, uint64_t _target, search_hook& _h
 				}
 
 				m_queue[batch.buf].enqueueUnmapMemObject(m_searchBuffer[batch.buf], m_results[batch.buf]);
-				if (num_found && _hook.found(nonces, num_found))
-					break;
 
-				// reset search buffer if we're still going, ie. we found a solution but it got rejected.
-				if (num_found)
-					m_queue[batch.buf].enqueueWriteBuffer(m_searchBuffer[batch.buf], true, offsetof(search_results, solutions), 4, &c_zero);
-
+				if (num_found) {
+					m_queue[batch.buf].enqueueWriteBuffer(m_searchBuffer[batch.buf], false, offsetof(search_results, solutions), 4, &c_zero);
+					if (_hook.found(nonces, num_found))
+						break;
+				}
 				if (batch.buf == 0)
 					// hash rates come out smoother if we report regularly.
 					m_owner->accumulateHashes(m_globalWorkSize * l_bufferCount, batchCount++);
