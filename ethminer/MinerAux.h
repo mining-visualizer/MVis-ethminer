@@ -821,7 +821,7 @@ private:
 								recentChallenges.pop_back();
 							challenge = _challenge;
 							target = _target;
-							LogS << "New challenge : " << toHex(_challenge).substr(0, 8);
+							LogB << "New challenge : " << toHex(_challenge).substr(0, 8);
 							try {
 								f.currentBlock = mvisRPC->getBlockNumber() + 1;
 							}

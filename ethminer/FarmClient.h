@@ -180,6 +180,18 @@ public:
 		m_acctPK = ProgOpt::Get("0xBitcoin", "AcctPK");
 	}
 
+	int getNextNonce() {
+		// get transaction count for nonce
+		Json::Value p;
+		p.append(m_minerAcct);
+		p.append("latest");
+		Json::Value result = this->CallMethod("eth_getTransactionCount", p);
+		std::istringstream converter(result.asString());
+		int i;
+		converter >> std::hex >> i;
+		return i;
+	}
+
 	uint64_t tokenBalance() {
 		Json::Value p;
 		p["from"] = m_minerAcct;			// ETH address (Jaxx HD)
@@ -393,18 +405,15 @@ public:
 		}
 
 
-		// get transaction count for nonce
-		Json::Value p;
-		p.append(m_minerAcct);
-		p.append("latest");
-		Json::Value result = this->CallMethod("eth_getTransactionCount", p);
-		std::istringstream converter(result.asString());
-		int nonce;
-		converter >> std::hex >> nonce;
-
 		// prepare transaction
 		Transaction t;
-		t.nonce = nonce;
+		if (m_lastSolution.elapsedSeconds() > 5 * 60 || m_txNonce == -1) {
+			m_txNonce = getNextNonce();
+		} else {
+			m_txNonce++;
+		}
+		m_lastSolution.restart();
+		t.nonce = m_txNonce;
 		t.receiveAddress = toAddress(m_tokenContract);
 		//t.gas = u256(119840);
 		t.gas = u256(219840);
@@ -434,10 +443,10 @@ public:
 		ss << "0x" << toHex(t.rlp());
 
 		// submit to the node 
-		p.clear();
+		Json::Value p;
 		p.append(ss.str());
 		//LogS << "Raw transaction to send : " << ss.str();
-		result = this->CallMethod("eth_sendRawTransaction", p);
+		Json::Value result = this->CallMethod("eth_sendRawTransaction", p);
 		LogS << "Tx hash : " << result.asString();
 		return true;
 	}
@@ -527,6 +536,9 @@ private:
 	string m_minerAcct;
 	string m_acctPK;
 	string m_tokenContract;
+	int m_txNonce = -1;
+	Timer m_lastSolution;
+
 
 };
 
