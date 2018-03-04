@@ -193,7 +193,12 @@ public:
 		data.append(_txHash);
 		try {
 			Json::Value result = this->CallMethod("eth_getTransactionReceipt", data);
-			return result["status"] == "0x1" ? TxStatus::Succeeded : TxStatus::Failed;
+			if (result["status"].asString() == "0x1")
+				return TxStatus::Succeeded;
+			else if (result["status"].asString() == "0x0")
+				return TxStatus::Failed;
+			else
+				return TxStatus::NotFound;
 		}
 		catch (...) {
 			return TxStatus::NotFound;
@@ -492,8 +497,7 @@ public:
 		m_lastSolution.restart();
 		t.nonce = m_txNonce;
 		t.receiveAddress = toAddress(m_tokenContract);
-		//t.gas = u256(119840);
-		t.gas = u256(219840);
+		t.gas = u256(100000);
 		ProgOpt::Load("");
 		t.gasPrice = u256(ProgOpt::Get("0xBitcoin", "GasPrice")) * 1000000000;	// convert gwei to wei
 
