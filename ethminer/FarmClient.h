@@ -206,18 +206,30 @@ public:
 	}
 
 	void checkPendingTransactions() {
-		deque<string>::iterator it;
-		for (it = m_pendingTransactions.begin(); it != m_pendingTransactions.end(); ) {
-			TxStatus status = getTxStatus(*it);
+		vector<Transaction>::iterator it;
+		for (it = m_pendingTxs.begin(); it != m_pendingTxs.end(); ) 
+		{
+			TxStatus status = getTxStatus((*it).receiptHash);
 			if (status == Succeeded)
-				LogB << "Tx " << (*it).substr(0, 10) << " succeeded :)";
+				LogB << "Tx " << (*it).receiptHash.substr(0, 10) << " succeeded :)";
 			else if (status == Failed)
-				LogB << "Tx " << (*it).substr(0, 10) << " failed :(";
+				LogB << "Tx " << (*it).receiptHash.substr(0, 10) << " failed :(";
 
 			if (status == NotFound) 
+			{
+				// adjust gas price if necessary
+				int recommended = 8;
+				if ((*it).gasPrice < u256(recommended) * 1000000000)
+				{
+					// increase gas price and resend
+					(*it).gasPrice = u256(recommended) * 1000000000;
+					txSignSend((*it));
+					LogB << "Adjusting gas price to " << (*it).gasPrice / 1000000000 << ", tx hash=" << (*it).receiptHash;
+				}
 				++it;
+			}
 			else 
-				it = m_pendingTransactions.erase(it);
+				it = m_pendingTxs.erase(it);
 		}
 	}
 
@@ -280,38 +292,6 @@ public:
 		LogS << "0x" << toHex(hash);
 	}
 
-
-	void testTransaction() {
-
-		// get transaction count for nonce
-		Json::Value p;
-		p.append(m_minerAcct);
-		p.append("latest");
-		Json::Value result = this->CallMethod("eth_getTransactionCount", p);
-		std::istringstream converter(result.asString());
-		int nonce;
-		converter >> std::hex >> nonce;
-
-		// prepare transaction
-		Transaction t;
-		t.nonce = nonce;
-		t.receiveAddress = toAddress("0x29224Be72851D7Bad619f64c2E51E8Ca5Ba1094b");
-		t.gas = u256(21000);
-		t.gasPrice = u256(10000000000);
-		t.data = fromHex("");
-		t.value = 4000000000;
-		Secret pk = Secret("d1ced27471f165c1d42b2e225c416125fa998900a2865b2168686c34e5520e24");
-		t.sign(pk);
-		stringstream ss;
-		ss << "0x" << toHex(t.rlp());
-
-		// submit to the node
-		p.clear();
-		p.append(ss.str());
-		result = this->CallMethod("eth_sendRawTransaction", p);
-		cout << "tx send result : " << result.asString() << endl;
-
-	}
 
 	Json::Value eth_getWork() throw (jsonrpc::JsonRpcException) {
 		Json::Value p;
@@ -461,6 +441,21 @@ public:
 			throw jsonrpc::JsonRpcException(jsonrpc::Errors::ERROR_CLIENT_INVALID_RESPONSE, result.toStyledString());
 	}
 
+	void txSignSend(Transaction &t) 
+	{
+		stringstream ss;
+		Secret pk = Secret(m_acctPK);
+		t.sign(pk);
+		ss = std::stringstream();
+		ss << "0x" << toHex(t.rlp());
+
+		// submit to the node 
+		Json::Value p;
+		p.append(ss.str());
+		Json::Value result = this->CallMethod("eth_sendRawTransaction", p);
+		t.receiptHash = result.asString();
+	}
+
 	bool eth_submitWorkToken(h256 _nonce, bytes _hash, bytes _challenge) throw (jsonrpc::JsonRpcException) {
 
 		try {
@@ -518,18 +513,9 @@ public:
 		t.data = fromHex(sMethod);
 		t.value = 0;
 
-		Secret pk = Secret(m_acctPK);
-		t.sign(pk);
-		ss = std::stringstream();
-		ss << "0x" << toHex(t.rlp());
-
-		// submit to the node 
-		Json::Value p;
-		p.append(ss.str());
-		//LogS << "Raw transaction to send : " << ss.str();
-		Json::Value result = this->CallMethod("eth_sendRawTransaction", p);
-		LogB << "Tx hash : " << result.asString();
-		m_pendingTransactions.push_back(result.asString());
+		txSignSend(t);
+		LogB << "Tx hash : " << t.receiptHash;
+		m_pendingTxs.push_back(t);
 		return true;
 	}
 
@@ -621,6 +607,7 @@ private:
 	int m_txNonce = -1;
 	Timer m_lastSolution;
 	deque<string> m_pendingTransactions;
+	vector<Transaction> m_pendingTxs;
 
 
 };

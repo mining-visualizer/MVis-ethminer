@@ -791,7 +791,7 @@ private:
 							lastHashRateDisplay.restart();
 						}
 					}
-					if (lastBalanceCheck.elapsedSeconds() >= 15) {
+					if (lastBalanceCheck.elapsedSeconds() >= 15) {		
 						tokenBalance = rpc.tokenBalance();
 						rpc.checkPendingTransactions();
 						lastBalanceCheck.restart();
