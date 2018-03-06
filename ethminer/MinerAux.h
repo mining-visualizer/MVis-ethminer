@@ -767,13 +767,7 @@ private:
 		deque<bytes> recentChallenges;
 
 		int tokenBalance = rpc.tokenBalance();
-		//std::thread t1(&FarmClient::bidScanner, &rpc);
-
-		bytes c_test(32);
-		h256 n_test = h256::random();
-		memcpy(c_test.data(), n_test.data(), 32);
-		n_test = h256::random();
-		rpc.testHash2(n_test, c_test);
+		std::thread t1(&FarmClient::bidScanner, &rpc);
 
 		while (true)
 		{
@@ -837,7 +831,8 @@ private:
 							f.setWork_token(challenge, target);
 							lastBlockTime.restart();
 
-							rpc.eth_getLastBlockData();
+							//rpc.eth_getLastBlockData();
+							rpc.setChallenge(challenge);
 
 						}
 

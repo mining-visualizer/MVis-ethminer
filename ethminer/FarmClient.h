@@ -182,6 +182,14 @@ public:
 		NotFound
 	};
 
+	class CMiner {
+	public:
+		string txHash;
+		string account;
+		int gasPrice;
+		bytes challenge;
+
+	};
 
 	// Constructor
 	FarmClient(jsonrpc::IClientConnector &conn, jsonrpc::clientVersion_t type = jsonrpc::JSONRPC_CLIENT_V2) : jsonrpc::Client(conn, type) 
@@ -197,25 +205,90 @@ public:
 		return CallMethod(_function, _params);
 	}
 
+	void setChallenge(bytes& _challenge)
+	{
+		Guard l(x_recentChallenges);
+		m_recentChallenges.push_front(_challenge);
+		if (m_recentChallenges.size() > 4)
+			m_recentChallenges.pop_back();
+	}
+
 	// this routine runs on a separate thread
 	void bidScanner() 
 	{
 		Json::Value data;
 		Json::Value result;
+		deque<CMiner> biddingMiners;
 
 		// sign up for pending transactions
-		data = Json::Value();
-		result = rpcCall("eth_newPendingTransactionFilter", data);
-		tx_filterID = result.asString();
+		try
+		{
+			data = Json::Value();
+			result = rpcCall("eth_newPendingTransactionFilter", data);
+			tx_filterID = result.asString();
+		}
+		catch (std::exception& e)
+		{
+			LogB << "Error calling eth_newPendingTransactionFilter" << e.what();
+			tx_filterID = "";
+		}
 
 		while (true) {
-			// request the hashes of all txs received since the last time we called.
-			data = Json::Value();
-			data.append(tx_filterID);
-			result = rpcCall("eth_getFilterChanges", data);
 
-			// we've only got the hashes at this point,  so now retrieve each txs looking for calls to 
-			// the mint() function of contract 0xbitcoin 
+			// check existing bidders to see if any need removal.
+			deque<CMiner>::iterator it;
+			for (it = biddingMiners.begin(); it != biddingMiners.end(); )
+			{
+				// check to see if the tx they submitted is still there
+				Json::Value tx;
+				data.clear();
+				data.append((*it).txHash);
+				tx = rpcCall("eth_getTransactionByHash", data);
+				if (tx.isNull())
+				{
+					LogB << "Miner " << (*it).account.substr(0, 10) << " tx is no longer in the txpool";
+					it = biddingMiners.erase(it);
+				} else
+				{
+					// check for the existence of a tx receipt, which indicates the tx got mined.
+					data.clear();
+					data.append((*it).txHash);
+					try
+					{
+						tx = rpcCall("eth_getTransactionReceipt", data);
+						if (!tx.isNull())
+						{
+							string bidStatus = tx["status"].asString() == "0x1" ? " WON" : (tx["status"].asString() == "0x0" ? " LOST" : " ???");
+							LogB << "Miner " << (*it).account.substr(0, 10) << bidStatus << ", block: " << HexToInt(tx["blockNumber"].asString());
+							it = biddingMiners.erase(it);
+						} else
+						{
+							++it;
+						}
+					}
+					catch (...)
+					{
+						// most likely transaction receipt not found
+						++it;
+					}
+				}
+			}
+
+
+			// request the hashes of all txs received since the last time we called.
+			try
+			{
+				data = Json::Value();
+				data.append(tx_filterID);
+				result = rpcCall("eth_getFilterChanges", data);
+			}
+			catch (std::exception& e)
+			{
+				LogB << "Error calling eth_getFilterChanges" << e.what();
+				result.clear();
+			}
+
+			// we've only got the hashes at this point,  so now retrieve each txs 
 			for (uint32_t i = 0; i < result.size(); i++) 
 			{
 				string hash = result[i].asString();
@@ -226,17 +299,37 @@ public:
 					if (!tx.isNull()) {
 						string toAddr = tx["to"].asString();
 						string input = tx["input"].asString();
+						// look for txs addressed to the 0xBitcoin contract that are calling the mint() function
 						if (LowerCase(toAddr) == TokenContract && input.substr(0, 10) == "0x1801fbe5") {
+							CMiner miner;
+							miner.txHash = hash;
+							miner.account = tx["from"].asString();
+							miner.gasPrice = HexToInt(tx["gasPrice"].asString()) / 1000000000;
+							// try to determine what challenge this miner is submitting for.
 							// pull out the nonce and the hash
 							h256 nonce = h256(input.substr(10, 64));
-							bytes hash = fromHex(input.substr(74, 64));
-							LogS << tx["from"].asString() << " called the mint() function of 0xBitcoin!";
+							bytes minerhash = fromHex(input.substr(74, 64));
+							h160 sender = h160(miner.account);
+							bytes hash(32);
+							{
+								Guard l(x_recentChallenges);
+								for (auto c : m_recentChallenges)
+								{
+									keccak256_0xBitcoin(c, sender, nonce, hash);
+									if (hash == minerhash)
+									{
+										miner.challenge = c;
+									}
+								}
+							}
+							LogB << "Miner " << miner.account.substr(0, 10) << " submitted a tx. gasPrice=" << miner.gasPrice
+								<< ", challenge=" << toHex(miner.challenge).substr(0, 10);
+							biddingMiners.push_back(miner);
 						}
 					}
 				}
 				catch (std::exception& e) {
-					LogS << "Error retrieving transaction " << hash;
-					LogS << "Message : " << e.what();
+					LogB << "Error calling eth_getTransactionByHash " << e.what();
 				}
 			}
 
@@ -353,10 +446,7 @@ public:
 		p.append(m_minerAcct);
 		p.append("latest");
 		Json::Value result = rpcCall("eth_getTransactionCount", p);
-		std::istringstream converter(result.asString());
-		int i;
-		converter >> std::hex >> i;
-		return i;
+		return HexToInt(result.asString());
 	}
 
 	uint64_t tokenBalance() {
@@ -642,7 +732,8 @@ public:
 			memcpy(&mix[0], challenge.data(), 32);
 			memcpy(&mix[32], sender.data(), 20);
 			bytes hash(32);
-			//keccak256_0xBitcoin(challenge, sender, nonce, hash);
+			keccak256_0xBitcoin(challenge, sender, nonce, hash);
+			LogS << "0x" << toHex(hash);
 			SHA3_256((const ethash_h256_t*) hash.data(), (const uint8_t*) mix.data(), 84);
 			LogS << "0x" << toHex(hash);
 			LogS << "end test";
@@ -651,56 +742,7 @@ public:
 			throw jsonrpc::JsonRpcException(jsonrpc::Errors::ERROR_CLIENT_INVALID_RESPONSE, result.toStyledString());
 	}
 
-	void testHash2(h256 nonce, bytes challenge)  throw (jsonrpc::JsonRpcException) 
-	{
-		std::vector<byte> mix(84);
-		std::stringstream ss;
-		Json::Value p;
-		p["from"] = m_minerAcct;        // ETH address (Jaxx HD)
-		p["to"] = m_tokenContract;        // 0xbitcoin contract address
 
-										  // function signature
-		h256 bMethod = sha3("getMintDigest(uint256,bytes32,bytes32)");
-		std::string sMethod = toHex(bMethod, dev::HexPrefix::Add);
-		sMethod = sMethod.substr(0, 10);
-
-		// nonce
-		ss << std::setw(64) << std::setfill('0') << nonce.hex();
-		std::string s2(ss.str());
-		sMethod = sMethod + s2;
-		memcpy(&mix[52], nonce.data(), 32);
-
-		// challenge_digest
-		ss = std::stringstream();
-		ss << std::left << std::setw(64) << std::setfill('0') << toHex(challenge);
-		s2 = std::string(ss.str());
-		sMethod = sMethod + s2;
-
-		// challenge_number
-		sMethod = sMethod + s2;
-
-		p["data"] = sMethod;
-
-		Json::Value data;
-		data.append(p);
-		data.append("latest");
-
-		Json::Value result = this->CallMethod("eth_call", data);
-		if (result.isString()) {
-			LogS << "test hash";
-			LogS << result.asString();
-
-			h160 sender(m_tokenContract);
-			memcpy(&mix[0], challenge.data(), 32);
-			memcpy(&mix[32], sender.data(), 20);
-			bytes hash(32);
-			SHA3_256((const ethash_h256_t*) hash.data(), (const uint8_t*) mix.data(), 84);
-			LogS << "0x" << toHex(hash);
-			LogS << "end test";
-
-		} else
-			throw jsonrpc::JsonRpcException(jsonrpc::Errors::ERROR_CLIENT_INVALID_RESPONSE, result.toStyledString());
-	}
 
 private:
 	string m_minerAcct;
@@ -712,7 +754,8 @@ private:
 	vector<Transaction> m_pendingTxs;
 	mutable Mutex x_callMethod;
 	string tx_filterID;
-
+	deque<bytes> m_recentChallenges;
+	mutable Mutex x_recentChallenges;
 
 };
 

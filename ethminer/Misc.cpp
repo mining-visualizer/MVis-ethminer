@@ -128,3 +128,12 @@ void keccak256_0xBitcoin(bytes _challenge, h160 _sender, h256 _nonce, bytes& _ha
 	memcpy(&mix[52], _nonce.data(), 32);
 	SHA3_256((const ethash_h256_t*) _hash.data(), (const uint8_t*) mix.data(), 84);
 }
+
+uint64_t HexToInt(string _value)
+{
+	uint64_t x;
+	std::stringstream ss;
+	ss << std::hex << _value;
+	ss >> x; 
+	return x;
+}
