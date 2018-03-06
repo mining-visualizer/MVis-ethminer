@@ -394,7 +394,7 @@ bool ethash_cl_miner::verifyHashes()
 }
 
 
-void ethash_cl_miner::testHashes(string _minerAcct) {
+void ethash_cl_miner::testHashes() {
 
 	for (int i = 0; i != 50; ++i) {
 
@@ -402,7 +402,7 @@ void ethash_cl_miner::testHashes(string _minerAcct) {
 		bytes challenge(32);
 		memcpy(challenge.data(), nonce.data(), 32);
 		nonce = h256::random();
-		h160 sender(_minerAcct);
+		h160 sender = h160::random();
 
 		cl::Program program = m_programCL;
 		cl::Kernel testKeccak(program, "test_keccak");
@@ -432,18 +432,11 @@ void ethash_cl_miner::testHashes(string _minerAcct) {
 		m_queue[0].enqueueReadBuffer(hashBuff, CL_TRUE, 0, 32, kernelhash.data());
 
 		// now compute the hash on the CPU host and compare
-		uint32_t mix[21];
-		memcpy(&mix[0], challenge.data(), 32);
-		memcpy(&mix[8], sender.data(), 20);
-		memcpy(&mix[13], nonce.data(), 32);
-		mix[13] = 6;
-
-		//uint32_t* x = (uint32_t*) &nonce;
-		//x[0] = 6;
-		//memcpy(&mix[56], nonce.data() + 4, 28);
-
+		uint32_t* mix;
+		mix = (uint32_t*)nonce.data();
+		mix[13] = 6;	// the kernel does this, so we do it too
 		bytes hash(32);
-		SHA3_256((const ethash_h256_t*) hash.data(), (const uint8_t*) mix, 84);
+		keccak256_0xBitcoin(challenge, sender, nonce, hash);
 		if (hash != kernelhash) {
 			LogS << "Not equal!";
 		}

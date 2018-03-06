@@ -173,12 +173,15 @@ class FarmClient : public jsonrpc::Client
 {
 public:
 
+	const string TokenContract = "0xb6ed7644c69416d67b522e20bc294a9a9b405b31";      // 0xBitcoin
+
 	enum TxStatus
 	{
 		Succeeded,
 		Failed,
 		NotFound
 	};
+
 
 	// Constructor
 	FarmClient(jsonrpc::IClientConnector &conn, jsonrpc::clientVersion_t type = jsonrpc::JSONRPC_CLIENT_V2) : jsonrpc::Client(conn, type) 
@@ -188,11 +191,119 @@ public:
 		m_acctPK = ProgOpt::Get("0xBitcoin", "AcctPK");
 	}
 
+	Json::Value rpcCall(const std::string &_function, const Json::Value &_params)
+	{
+		Guard l(x_callMethod);
+		return CallMethod(_function, _params);
+	}
+
+	// this routine runs on a separate thread
+	void bidScanner() 
+	{
+		Json::Value data;
+		Json::Value result;
+
+		// sign up for pending transactions
+		data = Json::Value();
+		result = rpcCall("eth_newPendingTransactionFilter", data);
+		tx_filterID = result.asString();
+
+		while (true) {
+			// request the hashes of all txs received since the last time we called.
+			data = Json::Value();
+			data.append(tx_filterID);
+			result = rpcCall("eth_getFilterChanges", data);
+
+			// we've only got the hashes at this point,  so now retrieve each txs looking for calls to 
+			// the mint() function of contract 0xbitcoin 
+			for (uint32_t i = 0; i < result.size(); i++) 
+			{
+				string hash = result[i].asString();
+				data.clear();
+				data.append(hash);
+				try {
+					Json::Value tx = rpcCall("eth_getTransactionByHash", data);
+					if (!tx.isNull()) {
+						string toAddr = tx["to"].asString();
+						string input = tx["input"].asString();
+						if (LowerCase(toAddr) == TokenContract && input.substr(0, 10) == "0x1801fbe5") {
+							// pull out the nonce and the hash
+							h256 nonce = h256(input.substr(10, 64));
+							bytes hash = fromHex(input.substr(74, 64));
+							LogS << tx["from"].asString() << " called the mint() function of 0xBitcoin!";
+						}
+					}
+				}
+				catch (std::exception& e) {
+					LogS << "Error retrieving transaction " << hash;
+					LogS << "Message : " << e.what();
+				}
+			}
+
+
+			this_thread::sleep_for(chrono::milliseconds(1000));
+		}
+
+	}
+
+	void closeBidScanner() {
+		if (tx_filterID == "") return;
+		// cancel the filter
+		Json::Value data;
+		data.append(tx_filterID);
+		rpcCall("eth_uninstallFilter", data);
+	}
+
+	Json::Value readJson() {
+		ifstream f;
+		Json::Value res;
+
+		f.exceptions(ofstream::failbit | ofstream::badbit);
+		string path = "C:\\_temp\\mvis-txs.txt";
+		try {
+			Json::CharReaderBuilder rbuilder;
+			f.open(path, fstream::in);
+			std::string errs;
+			bool ok = Json::parseFromStream(rbuilder, f, &res, &errs);
+			if (!ok)
+				throw std::runtime_error(errs.c_str());
+			f.exceptions(ofstream::goodbit);
+			f.close();
+		}
+		catch (std::exception& e) {
+			LogB << "Error reading \"" << path << "\"";
+			LogB << "Message : " << e.what();
+			LogB << "Mining results reset to empty state.";
+			f.exceptions(ofstream::goodbit);
+			f.close();
+		}
+		return res;
+	}
+
+	void recommendGasPrice()
+	{
+		//Json::Value result = rpcCall("txpool_content", p);
+		Json::Value result = readJson();
+		Json::Value pending = result["pending"];
+		vector<string> senders = pending.getMemberNames();
+		for (int i = 0; i < senders.size(); i++) {
+			string s = senders[i];
+			int j = pending[s].size();
+			Json::Value txs = pending[s];
+			vector<string> nonces = txs.getMemberNames();
+			for (int j = 0; j < nonces.size(); j++) {
+				Json::Value tx = txs[nonces[j]];
+				string s1 = tx["to"].asString();
+
+			}
+		}
+	}
+
 	TxStatus getTxStatus(string _txHash) {
 		Json::Value data;
 		data.append(_txHash);
 		try {
-			Json::Value result = this->CallMethod("eth_getTransactionReceipt", data);
+			Json::Value result = rpcCall("eth_getTransactionReceipt", data);
 			if (result["status"].asString() == "0x1")
 				return TxStatus::Succeeded;
 			else if (result["status"].asString() == "0x0")
@@ -206,6 +317,7 @@ public:
 	}
 
 	void checkPendingTransactions() {
+		int i = 0;
 		vector<Transaction>::iterator it;
 		for (it = m_pendingTxs.begin(); it != m_pendingTxs.end(); ) 
 		{
@@ -218,7 +330,7 @@ public:
 			if (status == NotFound) 
 			{
 				// adjust gas price if necessary
-				int recommended = 8;
+				int recommended = 5;
 				if ((*it).gasPrice < u256(recommended) * 1000000000)
 				{
 					// increase gas price and resend
@@ -230,6 +342,8 @@ public:
 			}
 			else 
 				it = m_pendingTxs.erase(it);
+
+			i++;
 		}
 	}
 
@@ -238,7 +352,7 @@ public:
 		Json::Value p;
 		p.append(m_minerAcct);
 		p.append("latest");
-		Json::Value result = this->CallMethod("eth_getTransactionCount", p);
+		Json::Value result = rpcCall("eth_getTransactionCount", p);
 		std::istringstream converter(result.asString());
 		int i;
 		converter >> std::hex >> i;
@@ -265,7 +379,7 @@ public:
 		data.append(p);
 		data.append("latest");
 
-		Json::Value result = this->CallMethod("eth_call", data);
+		Json::Value result = rpcCall("eth_call", data);
 		u256 balance = u256(result.asString()) / 100000000;
 		if (result.isString()) {
 			return static_cast<uint64_t>(balance);
@@ -273,30 +387,10 @@ public:
 			throw jsonrpc::JsonRpcException(jsonrpc::Errors::ERROR_CLIENT_INVALID_RESPONSE, result.toStyledString());
 	}
 
-	void testkeccak() {
-		h256 nonce = h256::random();
-		bytes challenge(32);
-		memcpy(challenge.data(), nonce.data(), 32);
-		nonce = h256::random();
-
-		bytes mix(84);
-		memcpy(&mix[0], challenge.data(), 32);
-		h160 sender(m_minerAcct);
-		memcpy(&mix[32], sender.data(), 20);
-		memcpy(&mix[52], nonce.data(), 32);
-		bytes hash(32);
-		SHA3_256((const ethash_h256_t*) hash.data(), (const uint8_t*) mix.data(), 84);
-		LogS << "0x" << toHex(hash);
-
-		sha3_256(hash.data(), 32, mix.data(), 84);
-		LogS << "0x" << toHex(hash);
-	}
-
-
 	Json::Value eth_getWork() throw (jsonrpc::JsonRpcException) {
 		Json::Value p;
 		p = Json::nullValue;
-		Json::Value result = this->CallMethod("eth_getWork", p);
+		Json::Value result = rpcCall("eth_getWork", p);
 		if (result.isArray())
 			return result;
 		else
@@ -317,7 +411,7 @@ public:
 		data.append(p);
 		data.append("latest");
 
-		Json::Value result = this->CallMethod("eth_call", data);
+		Json::Value result = rpcCall("eth_call", data);
 		if (result.isString()) {
 			_challenge = fromHex(result.asString());
 		} else
@@ -333,7 +427,7 @@ public:
 		data.append(p);
 		data.append("latest");
 
-		result = this->CallMethod("eth_call", data);
+		result = rpcCall("eth_call", data);
 		if (result.isString()) {
 			_target = h256(result.asString());
 		} else
@@ -358,7 +452,7 @@ public:
 		data.append(p);
 		data.append("latest");
 
-		Json::Value result = this->CallMethod("eth_call", data);
+		Json::Value result = rpcCall("eth_call", data);
 		if (result.isString()) {
 			lastRewardTo = "0x" + result.asString().substr(26);
 		} else
@@ -373,7 +467,7 @@ public:
 		data.append(p);
 		data.append("latest");
 
-		result = this->CallMethod("eth_call", data);
+		result = rpcCall("eth_call", data);
 		if (result.isString()) {
 			lastRewardEthBlockNumber = u256(result.asString());
 		} else
@@ -382,59 +476,13 @@ public:
 		LogD << "Last reward to : " << lastRewardTo << ", block : " << lastRewardEthBlockNumber;
 	}
 
-	void testHash(h256 nonce, bytes challenge)  throw (jsonrpc::JsonRpcException) {
-		std::vector<byte> mix(84);
-		std::ostringstream ss;
-		Json::Value p;
-		p["from"] = m_minerAcct;		// ETH address (Jaxx HD)
-		p["to"] = m_tokenContract;		// 0xbitcoin contract address
-
-		// function signature
-		h256 bMethod = sha3("getMintDigest(uint256,bytes32)");
-		std::string sMethod = toHex(bMethod, dev::HexPrefix::Add);
-		sMethod = sMethod.substr(0, 10);
-
-		// nonce
-		ss << std::setw(64) << std::setfill('0') << nonce.hex();
-		std::string s2(ss.str());
-		sMethod = sMethod + s2;
-		memcpy(&mix[52], nonce.data(), 32);
-
-		// challenge_number
-		ss = std::ostringstream();
-		ss << std::left << std::setw(64) << std::setfill('0') << toHex(challenge);
-		s2 = std::string(ss.str());
-		sMethod = sMethod + s2;
-
-		p["data"] = sMethod;
-
-		Json::Value data;
-		data.append(p);
-		data.append("latest");
-
-		Json::Value result = this->CallMethod("eth_call", data);
-		if (result.isString()) {
-			LogS << "test hash";
-			LogS << result.asString();
-
-			h160 sender(m_tokenContract);
-			memcpy(&mix[0], challenge.data(), 32);
-			memcpy(&mix[32], sender.data(), 20);
-			bytes hash(32);
-			SHA3_256((const ethash_h256_t*) hash.data(), (const uint8_t*) mix.data(), 84);
-			LogS << "0x" << toHex(hash);
-			LogS << "end test";
-
-		} else
-			throw jsonrpc::JsonRpcException(jsonrpc::Errors::ERROR_CLIENT_INVALID_RESPONSE, result.toStyledString());
-	}
 
 	bool eth_submitWork(const std::string& param1, const std::string& param2, const std::string& param3) throw (jsonrpc::JsonRpcException) {
 		Json::Value p;
 		p.append(param1);
 		p.append(param2);
 		p.append(param3);
-		Json::Value result = this->CallMethod("eth_submitWork", p);
+		Json::Value result = rpcCall("eth_submitWork", p);
 		if (result.isBool())
 			return result.asBool();
 		else
@@ -452,7 +500,7 @@ public:
 		// submit to the node 
 		Json::Value p;
 		p.append(ss.str());
-		Json::Value result = this->CallMethod("eth_sendRawTransaction", p);
+		Json::Value result = rpcCall("eth_sendRawTransaction", p);
 		t.receiptHash = result.asString();
 	}
 
@@ -494,7 +542,8 @@ public:
 		t.receiveAddress = toAddress(m_tokenContract);
 		t.gas = u256(100000);
 		ProgOpt::Load("");
-		t.gasPrice = u256(ProgOpt::Get("0xBitcoin", "GasPrice")) * 1000000000;	// convert gwei to wei
+		//t.gasPrice = u256(ProgOpt::Get("0xBitcoin", "GasPrice")) * 1000000000;	// convert gwei to wei
+		t.gasPrice = u256(1) * 1200000000;	// convert gwei to wei
 
 		// compute data parameter : first 4 bytes is hash of function signature
 		h256 bMethod = sha3("mint(uint256,bytes32)");
@@ -519,61 +568,12 @@ public:
 		return true;
 	}
 
-	void eth_checkWorkToken(h256 _nonce, bytes _challenge, bytes _hash, h256 _target) {
-		// this calls the mint(nonce, challenge) function using eth_call so it can check the return result
-		std::ostringstream ss;
-		Json::Value p;
-		p["from"] = m_minerAcct;		// ETH address (Jaxx HD)
-		p["to"] = m_tokenContract;		// 0xbitcoin contract address
-
-		// function signature
-		h256 bMethod = sha3("mint(uint256,bytes32)");
-		//h256 bMethod = sha3("checkMintSolution(uint256,bytes32,bytes32,uint256)");
-		std::string sMethod = toHex(bMethod, dev::HexPrefix::Add);
-		sMethod = sMethod.substr(0, 10); 
-
-		// nonce
-		ss << std::setw(64) << std::setfill('0') << _nonce.hex();
-		std::string s2(ss.str());
-		sMethod = sMethod + s2;
-
-		// hash
-		ss = std::ostringstream();
-		ss << std::left << std::setw(64) << std::setfill('0') << toHex(_hash);
-		s2 = std::string(ss.str());
-		sMethod = sMethod + s2;
-
-		// challenge_number
-		//ss = std::ostringstream();
-		//ss << std::left << std::setw(64) << std::setfill('0') << toHex(_challenge);
-		//s2 = std::string(ss.str());
-		//sMethod = sMethod + s2;
-
-		// target  (this is for checkMintSolution only)
-		//ss = std::ostringstream();
-		//ss << std::setw(64) << std::setfill('0') << _target.hex();
-		//s2 = std::string(ss.str());
-		//sMethod = sMethod + s2;
-
-
-		p["data"] = sMethod;
-
-		Json::Value data;
-		data.append(p);
-		data.append("latest");
-
-		Json::Value result = this->CallMethod("eth_call", data);
-		if (result.isString()) {
-			LogS << "mint() returns : " << result.asString();
-		} else
-			throw jsonrpc::JsonRpcException(jsonrpc::Errors::ERROR_CLIENT_INVALID_RESPONSE, result.toStyledString());
-	}
 
 	bool eth_submitHashrate(const std::string& param1, const std::string& param2) throw (jsonrpc::JsonRpcException) {
 		Json::Value p;
 		p.append(param1);
 		p.append(param2);
-		Json::Value result = this->CallMethod("eth_submitHashrate", p);
+		Json::Value result = rpcCall("eth_submitHashrate", p);
 		if (result.isBool())
 			return result.asBool();
 		else
@@ -583,7 +583,7 @@ public:
 	Json::Value eth_awaitNewWork() throw (jsonrpc::JsonRpcException) {
 		Json::Value p;
 		p = Json::nullValue;
-		Json::Value result = this->CallMethod("eth_awaitNewWork", p);
+		Json::Value result = rpcCall("eth_awaitNewWork", p);
 		if (result.isArray())
 			return result;
 		else
@@ -593,7 +593,7 @@ public:
 	bool eth_progress() throw (jsonrpc::JsonRpcException) {
 		Json::Value p;
 		p = Json::nullValue;
-		Json::Value result = this->CallMethod("eth_progress", p);
+		Json::Value result = rpcCall("eth_progress", p);
 		if (result.isBool())
 			return result.asBool();
 		else
@@ -608,6 +608,8 @@ private:
 	Timer m_lastSolution;
 	deque<string> m_pendingTransactions;
 	vector<Transaction> m_pendingTxs;
+	mutable Mutex x_callMethod;
+	string tx_filterID;
 
 
 };

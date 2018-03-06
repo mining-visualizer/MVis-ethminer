@@ -139,13 +139,9 @@ bool EthashGPUMiner::report(h256 _nonce)
 	// verify the solution
 	LogF << "Trace: EthashGPUMiner::report, challenge = " << toHex(challenge).substr(0, 8) << ", miner[" << m_index << "]";
 	h160 sender(m_farm->minerAcct);
-	h256 hash;
-	bytes mix(84);
-	memcpy(&mix[0], challenge.data(), 32);
-	memcpy(&mix[32], sender.data(), 20);
-	memcpy(&mix[52], _nonce.data(), 32);
-	SHA3_256((const ethash_h256_t*) &hash, (const uint8_t*) mix.data(), 84);
-	if (hash < target)
+	bytes hash(32);
+	keccak256_0xBitcoin(challenge, sender, _nonce, hash);
+	if (h256(hash) < target)
 		return  submitProof(_nonce);
 	LogB << "Solution found, but invalid.  Possible hash fault.";
 	return false;

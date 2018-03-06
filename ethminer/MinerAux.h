@@ -751,6 +751,8 @@ private:
 		Timer lastHashRateDisplay;
 		Timer lastBlockTime;
 		Timer lastBalanceCheck;
+		Timer lastGetWork;
+		Timer lastBidScan;
 
 		unsigned farmRetries = 0;
 		int maxRetries = failOverAvailable() ? m_maxFarmRetries : c_StopWorkAt;
@@ -767,6 +769,7 @@ private:
 		deque<bytes> recentChallenges;
 
 		int tokenBalance = rpc.tokenBalance();
+		//std::thread t1(&FarmClient::bidScanner, &rpc);
 
 		while (true)
 		{
@@ -799,7 +802,11 @@ private:
 
 					h256 _target;
 					bytes _challenge;
-					rpc.eth_getWork_token(_challenge, _target);
+					if (lastGetWork.elapsedMilliseconds() > m_pollingInterval) 
+					{
+						rpc.eth_getWork_token(_challenge, _target);
+						lastGetWork.restart();
+					}
 
 					if (!connectedToNode)
 					{
@@ -843,19 +850,21 @@ private:
 						goto out;
 					}
 
-					this_thread::sleep_for(chrono::milliseconds(m_pollingInterval));
+					//if (lastBidScan.elapsedMilliseconds() > 1000) 
+					//{
+					//	rpc.bidScanner();
+					//	lastBidScan.restart();
+					//}
+
+					this_thread::sleep_for(chrono::milliseconds(200));
 				}
 
 				if (f.shutDown)
 					break;
 
 				bytes hash(32);
-				bytes mix(84);
 				h160 sender(f.minerAcct);
-				memcpy(&mix[0], challenge.data(), 32);
-				memcpy(&mix[32], sender.data(), 20);
-				memcpy(&mix[52], solution.data(), 32);
-				SHA3_256((const ethash_h256_t*) hash.data(), (const uint8_t*) mix.data(), 84);
+				keccak256_0xBitcoin(challenge, sender, solution, hash);
 				if (h256(hash) < target) {
 					LogB << "Solution found; Submitting to node ...";
 					bool ok = rpc.eth_submitWorkToken(solution, hash, challenge);
@@ -892,6 +901,7 @@ private:
 
 out:
 		mvisRPC->disconnect("notify");
+		rpc.closeBidScanner();
 
 	}	// doFarm
 

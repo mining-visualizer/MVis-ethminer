@@ -27,7 +27,11 @@ along with mvis-ethereum.  If not, see <http://www.gnu.org/licenses/>.
 #include <pwd.h>
 #endif
 
+#include <libethash/sha3_cryptopp.h>
+#include <libethash/ethash.h>
+
 using namespace std;
+using namespace dev;
 using namespace boost;
 
 // read one line of text from the input stream. this handles mixed types of line endings.
@@ -115,4 +119,12 @@ bool fileExists(std::string _path)
 {
 	std::ifstream file(_path);
 	return file.good();
+}
+
+void keccak256_0xBitcoin(bytes _challenge, h160 _sender, h256 _nonce, bytes& _hash) {
+	bytes mix(84);
+	memcpy(&mix[0], _challenge.data(), 32);
+	memcpy(&mix[32], _sender.data(), 20);
+	memcpy(&mix[52], _nonce.data(), 32);
+	SHA3_256((const ethash_h256_t*) _hash.data(), (const uint8_t*) mix.data(), 84);
 }

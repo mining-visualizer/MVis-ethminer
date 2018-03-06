@@ -21,8 +21,11 @@ along with mvis-ethereum.  If not, see <http://www.gnu.org/licenses/>.
 #include <fstream> 
 #include <iostream> 
 #include <boost/filesystem.hpp>
+#include <libdevcore/Common.h>
+#include <libethcore/Common.h>
 
 bool getlineEx(std::istream& is, std::string& t);
 boost::filesystem::path getAppDataFolder(void);
 std::string& LowerCase(std::string& _s);
 bool fileExists(std::string _path);
+void keccak256_0xBitcoin(dev::bytes _challenge, dev::h160 _sender, dev::h256 _nonce, dev::bytes& _hash);

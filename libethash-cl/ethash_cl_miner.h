@@ -64,7 +64,7 @@ public:
 	);
 
 	bool verifyHashes();
-	void testHashes(string _minerAcct);
+	void testHashes();
 	bool buildBinary(cl::Device& _device, std::string &_outfile);
 	bool init(unsigned _platformId, unsigned _deviceId, h160 _miningAccount);
 	void exportDAG(std::string _seedhash);
