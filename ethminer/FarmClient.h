@@ -600,6 +600,108 @@ public:
 			throw jsonrpc::JsonRpcException(jsonrpc::Errors::ERROR_CLIENT_INVALID_RESPONSE, result.toStyledString());
 	}
 
+	void testHash(h256 nonce, bytes challenge)  throw (jsonrpc::JsonRpcException) {
+		std::vector<byte> mix(84);
+		std::ostringstream ss;
+		Json::Value p;
+		p["from"] = m_minerAcct;        // ETH address (Jaxx HD)
+		p["to"] = m_tokenContract;        // 0xbitcoin contract address
+
+										  // function signature
+		h256 bMethod = sha3("getMintDigest(uint256,bytes32,bytes32)");
+		std::string sMethod = toHex(bMethod, dev::HexPrefix::Add);
+		sMethod = sMethod.substr(0, 10);
+
+		// nonce
+		ss << std::setw(64) << std::setfill('0') << nonce.hex();
+		std::string s2(ss.str());
+		sMethod = sMethod + s2;
+		memcpy(&mix[52], nonce.data(), 32);
+
+		// challenge_digest. this is actually an unused parameter in the contract, so we
+		// just send in the challenge_number twice.
+		ss = std::ostringstream();
+		ss << std::left << std::setw(64) << std::setfill('0') << toHex(challenge);
+		s2 = std::string(ss.str());
+		sMethod = sMethod + s2;
+
+		// challenge_number
+		sMethod = sMethod + s2;
+
+		p["data"] = sMethod;
+
+		Json::Value data;
+		data.append(p);
+		data.append("latest");
+
+		Json::Value result = this->CallMethod("eth_call", data);
+		if (result.isString()) {
+			LogS << "test hash";
+			LogS << result.asString();
+			h160 sender(m_tokenContract);
+			memcpy(&mix[0], challenge.data(), 32);
+			memcpy(&mix[32], sender.data(), 20);
+			bytes hash(32);
+			//keccak256_0xBitcoin(challenge, sender, nonce, hash);
+			SHA3_256((const ethash_h256_t*) hash.data(), (const uint8_t*) mix.data(), 84);
+			LogS << "0x" << toHex(hash);
+			LogS << "end test";
+
+		} else
+			throw jsonrpc::JsonRpcException(jsonrpc::Errors::ERROR_CLIENT_INVALID_RESPONSE, result.toStyledString());
+	}
+
+	void testHash2(h256 nonce, bytes challenge)  throw (jsonrpc::JsonRpcException) 
+	{
+		std::vector<byte> mix(84);
+		std::stringstream ss;
+		Json::Value p;
+		p["from"] = m_minerAcct;        // ETH address (Jaxx HD)
+		p["to"] = m_tokenContract;        // 0xbitcoin contract address
+
+										  // function signature
+		h256 bMethod = sha3("getMintDigest(uint256,bytes32,bytes32)");
+		std::string sMethod = toHex(bMethod, dev::HexPrefix::Add);
+		sMethod = sMethod.substr(0, 10);
+
+		// nonce
+		ss << std::setw(64) << std::setfill('0') << nonce.hex();
+		std::string s2(ss.str());
+		sMethod = sMethod + s2;
+		memcpy(&mix[52], nonce.data(), 32);
+
+		// challenge_digest
+		ss = std::stringstream();
+		ss << std::left << std::setw(64) << std::setfill('0') << toHex(challenge);
+		s2 = std::string(ss.str());
+		sMethod = sMethod + s2;
+
+		// challenge_number
+		sMethod = sMethod + s2;
+
+		p["data"] = sMethod;
+
+		Json::Value data;
+		data.append(p);
+		data.append("latest");
+
+		Json::Value result = this->CallMethod("eth_call", data);
+		if (result.isString()) {
+			LogS << "test hash";
+			LogS << result.asString();
+
+			h160 sender(m_tokenContract);
+			memcpy(&mix[0], challenge.data(), 32);
+			memcpy(&mix[32], sender.data(), 20);
+			bytes hash(32);
+			SHA3_256((const ethash_h256_t*) hash.data(), (const uint8_t*) mix.data(), 84);
+			LogS << "0x" << toHex(hash);
+			LogS << "end test";
+
+		} else
+			throw jsonrpc::JsonRpcException(jsonrpc::Errors::ERROR_CLIENT_INVALID_RESPONSE, result.toStyledString());
+	}
+
 private:
 	string m_minerAcct;
 	string m_acctPK;

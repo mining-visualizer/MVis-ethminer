@@ -751,8 +751,6 @@ private:
 		Timer lastHashRateDisplay;
 		Timer lastBlockTime;
 		Timer lastBalanceCheck;
-		Timer lastGetWork;
-		Timer lastBidScan;
 
 		unsigned farmRetries = 0;
 		int maxRetries = failOverAvailable() ? m_maxFarmRetries : c_StopWorkAt;
@@ -770,6 +768,12 @@ private:
 
 		int tokenBalance = rpc.tokenBalance();
 		//std::thread t1(&FarmClient::bidScanner, &rpc);
+
+		bytes c_test(32);
+		h256 n_test = h256::random();
+		memcpy(c_test.data(), n_test.data(), 32);
+		n_test = h256::random();
+		rpc.testHash2(n_test, c_test);
 
 		while (true)
 		{
@@ -802,11 +806,7 @@ private:
 
 					h256 _target;
 					bytes _challenge;
-					if (lastGetWork.elapsedMilliseconds() > m_pollingInterval) 
-					{
-						rpc.eth_getWork_token(_challenge, _target);
-						lastGetWork.restart();
-					}
+					rpc.eth_getWork_token(_challenge, _target);
 
 					if (!connectedToNode)
 					{
@@ -850,13 +850,7 @@ private:
 						goto out;
 					}
 
-					//if (lastBidScan.elapsedMilliseconds() > 1000) 
-					//{
-					//	rpc.bidScanner();
-					//	lastBidScan.restart();
-					//}
-
-					this_thread::sleep_for(chrono::milliseconds(200));
+					this_thread::sleep_for(chrono::milliseconds(m_pollingInterval));
 				}
 
 				if (f.shutDown)
