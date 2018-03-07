@@ -68,6 +68,8 @@
 #include "MultiLog.h"
 #include "MVisRPC.h"
 
+//#include <conio.h>
+
 using namespace std;
 using namespace dev;
 using namespace dev::eth;
@@ -751,6 +753,8 @@ private:
 		Timer lastHashRateDisplay;
 		Timer lastBlockTime;
 		Timer lastBalanceCheck;
+		Timer lastGetWork;
+		Timer lastCheckTx;
 
 		unsigned farmRetries = 0;
 		int maxRetries = failOverAvailable() ? m_maxFarmRetries : c_StopWorkAt;
@@ -792,50 +796,56 @@ private:
 							lastHashRateDisplay.restart();
 						}
 					}
-					if (lastBalanceCheck.elapsedSeconds() >= 15) {		
+					if (lastBalanceCheck.elapsedSeconds() >= 10)
+					{
 						tokenBalance = rpc.tokenBalance();
-						rpc.checkPendingTransactions();
 						lastBalanceCheck.restart();
 					}
 
 					h256 _target;
 					bytes _challenge;
-					rpc.eth_getWork_token(_challenge, _target);
-
-					if (!connectedToNode)
+					if (lastGetWork.elapsedMilliseconds() > m_pollingInterval || !connectedToNode)
 					{
-						connectedToNode = true;
-						LogS << "Connection established.";
-					}
-					farmRetries = 0;
+						rpc.eth_getWork_token(_challenge, _target);
+						lastGetWork.restart();
 
-					if (_challenge != challenge)
-					{
-						// when queried for the most recent challenge, infura nodes will occasionally respond 
-						// with the one previous.
-						bool seenBefore = false;
-						for (bytes c : recentChallenges) {
-							seenBefore = (seenBefore || (c == _challenge));
+						if (!connectedToNode)
+						{
+							connectedToNode = true;
+							LogS << "Connection established.";
 						}
-						if (!seenBefore) {
-							recentChallenges.push_front(_challenge);
-							if (recentChallenges.size() > 5)
-								recentChallenges.pop_back();
-							challenge = _challenge;
-							target = _target;
-							LogB << "New challenge : " << toHex(_challenge).substr(0, 8);
-							try {
-								f.currentBlock = mvisRPC->getBlockNumber() + 1;
+						farmRetries = 0;
+
+						if (_challenge != challenge)
+						{
+							// when queried for the most recent challenge, infura nodes will occasionally respond 
+							// with the one previous.
+							bool seenBefore = false;
+							for (bytes c : recentChallenges)
+							{
+								seenBefore = (seenBefore || (c == _challenge));
 							}
-							catch (...) {}
-							f.setWork_token(challenge, target);
-							lastBlockTime.restart();
+							if (!seenBefore)
+							{
+								recentChallenges.push_front(_challenge);
+								if (recentChallenges.size() > 5)
+									recentChallenges.pop_back();
+								challenge = _challenge;
+								target = _target;
+								LogB << "New challenge : " << toHex(_challenge).substr(0, 8);
+								try
+								{
+									f.currentBlock = mvisRPC->getBlockNumber() + 1;
+								}
+								catch (...) {}
+								f.setWork_token(challenge, target);
+								lastBlockTime.restart();
 
-							//rpc.eth_getLastBlockData();
-							rpc.setChallenge(challenge);
+								//rpc.eth_getLastBlockData();
+								rpc.setChallenge(challenge);
 
+							}
 						}
-
 					}
 
 					if (lastBlockTime.elapsedSeconds() > m_worktimeout && failOverAvailable())
@@ -845,7 +855,26 @@ private:
 						goto out;
 					}
 
-					this_thread::sleep_for(chrono::milliseconds(m_pollingInterval));
+					if (lastCheckTx.elapsedMilliseconds() > 2000)
+					{
+						rpc.checkPendingTransactions();
+						lastCheckTx.restart();
+					}
+
+					//if (kbhit() != 0)
+					//{
+					//	int c = getch();
+					//	if (c == 'm')
+					//	{
+					//		h256 nonce;
+					//		bytes hash(32);
+					//		h160 sender(f.minerAcct);
+					//		keccak256_0xBitcoin(challenge, sender, nonce, hash);
+					//		rpc.eth_submitWorkToken(nonce, hash, challenge);
+					//	}
+					//}
+
+					this_thread::sleep_for(chrono::milliseconds(200));
 				}
 
 				if (f.shutDown)

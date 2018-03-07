@@ -131,6 +131,7 @@ public:
 	bytes data;						///< The data associated with the transaction, or the initialiser if it's a creation transaction.
 	h160 m_sender;					///< Cached sender, determined from signature.
 	string receiptHash;				///< hash of tx receipt
+	bytes challenge;				///< challenge this tx was submitted under.
 
 	h256 m_hashWith;				///< Cached hash of transaction with signature.
 	SignatureStruct m_vrs;			///< The signature of the transaction. Encodes the sender.

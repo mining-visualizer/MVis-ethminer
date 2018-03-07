@@ -218,7 +218,8 @@ public:
 	{
 		Json::Value data;
 		Json::Value result;
-		deque<CMiner> biddingMiners;
+		UniqueGuard l(x_biddingMiners, std::defer_lock);
+
 
 		// sign up for pending transactions
 		try
@@ -235,9 +236,10 @@ public:
 
 		while (true) {
 
+			l.lock();
 			// check existing bidders to see if any need removal.
 			deque<CMiner>::iterator it;
-			for (it = biddingMiners.begin(); it != biddingMiners.end(); )
+			for (it = m_biddingMiners.begin(); it != m_biddingMiners.end(); )
 			{
 				// check to see if the tx they submitted is still there
 				Json::Value tx;
@@ -247,7 +249,7 @@ public:
 				if (tx.isNull())
 				{
 					LogB << "Miner " << (*it).account.substr(0, 10) << " tx is no longer in the txpool";
-					it = biddingMiners.erase(it);
+					it = m_biddingMiners.erase(it);
 				} else
 				{
 					// check for the existence of a tx receipt, which indicates the tx got mined.
@@ -260,7 +262,7 @@ public:
 						{
 							string bidStatus = tx["status"].asString() == "0x1" ? " WON" : (tx["status"].asString() == "0x0" ? " LOST" : " ???");
 							LogB << "Miner " << (*it).account.substr(0, 10) << bidStatus << ", block: " << HexToInt(tx["blockNumber"].asString());
-							it = biddingMiners.erase(it);
+							it = m_biddingMiners.erase(it);
 						} else
 						{
 							++it;
@@ -323,8 +325,8 @@ public:
 								}
 							}
 							LogB << "Miner " << miner.account.substr(0, 10) << " submitted a tx. gasPrice=" << miner.gasPrice
-								<< ", challenge=" << toHex(miner.challenge).substr(0, 10);
-							biddingMiners.push_back(miner);
+								<< ", challenge=" << toHex(miner.challenge).substr(0, 8);
+							m_biddingMiners.push_back(miner);
 						}
 					}
 				}
@@ -333,7 +335,7 @@ public:
 				}
 			}
 
-
+			l.unlock();
 			this_thread::sleep_for(chrono::milliseconds(1000));
 		}
 
@@ -345,99 +347,6 @@ public:
 		Json::Value data;
 		data.append(tx_filterID);
 		rpcCall("eth_uninstallFilter", data);
-	}
-
-	Json::Value readJson() {
-		ifstream f;
-		Json::Value res;
-
-		f.exceptions(ofstream::failbit | ofstream::badbit);
-		string path = "C:\\_temp\\mvis-txs.txt";
-		try {
-			Json::CharReaderBuilder rbuilder;
-			f.open(path, fstream::in);
-			std::string errs;
-			bool ok = Json::parseFromStream(rbuilder, f, &res, &errs);
-			if (!ok)
-				throw std::runtime_error(errs.c_str());
-			f.exceptions(ofstream::goodbit);
-			f.close();
-		}
-		catch (std::exception& e) {
-			LogB << "Error reading \"" << path << "\"";
-			LogB << "Message : " << e.what();
-			LogB << "Mining results reset to empty state.";
-			f.exceptions(ofstream::goodbit);
-			f.close();
-		}
-		return res;
-	}
-
-	void recommendGasPrice()
-	{
-		//Json::Value result = rpcCall("txpool_content", p);
-		Json::Value result = readJson();
-		Json::Value pending = result["pending"];
-		vector<string> senders = pending.getMemberNames();
-		for (int i = 0; i < senders.size(); i++) {
-			string s = senders[i];
-			int j = pending[s].size();
-			Json::Value txs = pending[s];
-			vector<string> nonces = txs.getMemberNames();
-			for (int j = 0; j < nonces.size(); j++) {
-				Json::Value tx = txs[nonces[j]];
-				string s1 = tx["to"].asString();
-
-			}
-		}
-	}
-
-	TxStatus getTxStatus(string _txHash) {
-		Json::Value data;
-		data.append(_txHash);
-		try {
-			Json::Value result = rpcCall("eth_getTransactionReceipt", data);
-			if (result["status"].asString() == "0x1")
-				return TxStatus::Succeeded;
-			else if (result["status"].asString() == "0x0")
-				return TxStatus::Failed;
-			else
-				return TxStatus::NotFound;
-		}
-		catch (...) {
-			return TxStatus::NotFound;
-		}
-	}
-
-	void checkPendingTransactions() {
-		int i = 0;
-		vector<Transaction>::iterator it;
-		for (it = m_pendingTxs.begin(); it != m_pendingTxs.end(); ) 
-		{
-			TxStatus status = getTxStatus((*it).receiptHash);
-			if (status == Succeeded)
-				LogB << "Tx " << (*it).receiptHash.substr(0, 10) << " succeeded :)";
-			else if (status == Failed)
-				LogB << "Tx " << (*it).receiptHash.substr(0, 10) << " failed :(";
-
-			if (status == NotFound) 
-			{
-				// adjust gas price if necessary
-				int recommended = 5;
-				if ((*it).gasPrice < u256(recommended) * 1000000000)
-				{
-					// increase gas price and resend
-					(*it).gasPrice = u256(recommended) * 1000000000;
-					txSignSend((*it));
-					LogB << "Adjusting gas price to " << (*it).gasPrice / 1000000000 << ", tx hash=" << (*it).receiptHash;
-				}
-				++it;
-			}
-			else 
-				it = m_pendingTxs.erase(it);
-
-			i++;
-		}
 	}
 
 	int getNextNonce() {
@@ -579,7 +488,88 @@ public:
 			throw jsonrpc::JsonRpcException(jsonrpc::Errors::ERROR_CLIENT_INVALID_RESPONSE, result.toStyledString());
 	}
 
-	void txSignSend(Transaction &t) 
+	TxStatus getTxStatus(string _txHash)
+	{
+		Json::Value data;
+		data.append(_txHash);
+		try
+		{
+			Json::Value result = rpcCall("eth_getTransactionReceipt", data);
+			if (result["status"].asString() == "0x1")
+				return TxStatus::Succeeded;
+			else if (result["status"].asString() == "0x0")
+				return TxStatus::Failed;
+			else
+				return TxStatus::NotFound;
+		}
+		catch (...)
+		{
+			return TxStatus::NotFound;
+		}
+	}
+
+	u256 RecommendedGasPrice(bytes _challenge)
+	{
+		UniqueGuard l(x_biddingMiners);
+
+		LogD << "Trace: RecommendedGasPrice";
+		u256 recommendation = 0;
+		for (auto m : m_biddingMiners)
+		{
+			if (stricmp(m.account.c_str(), "0x8940C61831C3A2ba1Fb9e50f27260B5b5Af1A3EB") != 0 &&
+				stricmp(m.account.c_str(), "0x1b7bfB694eE51913c347971c7090a74AEFbd41f6") != 0 &&
+				m.challenge == _challenge)
+			{
+				LogD << "Trace: RecommendedGasPrice, existing bidder " << m.account.substr(0,10) << ", gasPrice=" << m.gasPrice;
+				if (m.gasPrice > recommendation)
+					recommendation = m.gasPrice;
+			}
+		}
+
+		// can't get the max macro to work ... stupid conflicts!
+		if (recommendation == 0)
+			recommendation = m_startGas;
+		else
+			recommendation += 4;
+		if (recommendation < m_startGas)
+			recommendation = m_startGas;
+
+		return recommendation * 1000000000;
+	}
+
+	void checkPendingTransactions()
+	{
+		int i = 0;
+		vector<Transaction>::iterator it;
+		for (it = m_pendingTxs.begin(); it != m_pendingTxs.end(); )
+		{
+			Transaction& t = (*it);
+			TxStatus status = getTxStatus(t.receiptHash);
+			if (status == Succeeded)
+				LogB << "Tx " << t.receiptHash.substr(0, 10) << " succeeded :)";
+			else if (status == Failed)
+				LogB << "Tx " << t.receiptHash.substr(0, 10) << " failed :(";
+
+			if (status == NotFound)
+			{
+				// adjust gas price if necessary
+				u256 recommended = RecommendedGasPrice(t.challenge);
+				if (t.gasPrice < recommended)
+				{
+					// increase gas price and resend
+					t.gasPrice = recommended;
+					txSignSend(t);
+					LogB << "Adjusting gas price to " << t.gasPrice / 1000000000 << ", tx hash=" << t.receiptHash;
+				}
+				++it;
+			} else
+				it = m_pendingTxs.erase(it);
+
+			i++;
+		}
+	}
+
+	void txSignSend(Transaction &t)
 	{
 		stringstream ss;
 		Secret pk = Secret(m_acctPK);
@@ -632,8 +622,8 @@ public:
 		t.receiveAddress = toAddress(m_tokenContract);
 		t.gas = u256(100000);
 		ProgOpt::Load("");
-		//t.gasPrice = u256(ProgOpt::Get("0xBitcoin", "GasPrice")) * 1000000000;	// convert gwei to wei
-		t.gasPrice = u256(1) * 1200000000;	// convert gwei to wei
+		m_startGas = atoi(ProgOpt::Get("0xBitcoin", "GasPrice").c_str());
+		t.gasPrice = RecommendedGasPrice(_challenge);
 
 		// compute data parameter : first 4 bytes is hash of function signature
 		h256 bMethod = sha3("mint(uint256,bytes32)");
@@ -651,6 +641,7 @@ public:
 		sMethod = sMethod + s2;
 		t.data = fromHex(sMethod);
 		t.value = 0;
+		t.challenge = _challenge;
 
 		txSignSend(t);
 		LogB << "Tx hash : " << t.receiptHash;
@@ -750,12 +741,14 @@ private:
 	string m_tokenContract;
 	int m_txNonce = -1;
 	Timer m_lastSolution;
-	deque<string> m_pendingTransactions;
 	vector<Transaction> m_pendingTxs;
 	mutable Mutex x_callMethod;
 	string tx_filterID;
 	deque<bytes> m_recentChallenges;
 	mutable Mutex x_recentChallenges;
+	deque<CMiner> m_biddingMiners;
+	mutable Mutex x_biddingMiners;
+	int m_startGas;
 
 };
 
