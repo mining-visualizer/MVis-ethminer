@@ -855,7 +855,7 @@ private:
 						goto out;
 					}
 
-					if (lastCheckTx.elapsedMilliseconds() > 2000)
+					if (lastCheckTx.elapsedMilliseconds() > 1000)
 					{
 						rpc.checkPendingTransactions();
 						lastCheckTx.restart();

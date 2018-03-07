@@ -179,6 +179,7 @@ public:
 	{
 		Succeeded,
 		Failed,
+		Waiting,
 		NotFound
 	};
 
@@ -248,7 +249,7 @@ public:
 				tx = rpcCall("eth_getTransactionByHash", data);
 				if (tx.isNull())
 				{
-					LogB << "Miner " << (*it).account.substr(0, 10) << " tx is no longer in the txpool";
+					LogD << "Miner " << (*it).account.substr(0, 10) << " is no longer in the txpool. tx = " << (*it).txHash.substr(0, 10);
 					it = m_biddingMiners.erase(it);
 				} else
 				{
@@ -261,7 +262,8 @@ public:
 						if (!tx.isNull())
 						{
 							string bidStatus = tx["status"].asString() == "0x1" ? " WON" : (tx["status"].asString() == "0x0" ? " LOST" : " ???");
-							LogB << "Miner " << (*it).account.substr(0, 10) << bidStatus << ", block: " << HexToInt(tx["blockNumber"].asString());
+							LogD << "Miner " << (*it).account.substr(0, 10) << bidStatus << ", block: "
+								<< HexToInt(tx["blockNumber"].asString()) << ", tx=" << (*it).txHash.substr(0, 10);
 							it = m_biddingMiners.erase(it);
 						} else
 						{
@@ -324,8 +326,8 @@ public:
 									}
 								}
 							}
-							LogB << "Miner " << miner.account.substr(0, 10) << " submitted a tx. gasPrice=" << miner.gasPrice
-								<< ", challenge=" << toHex(miner.challenge).substr(0, 8);
+							LogD << "Miner " << miner.account.substr(0, 10) << " submitted tx " << miner.txHash.substr(0, 10) 
+								<< ". gasPrice=" << miner.gasPrice << ", challenge=" << toHex(miner.challenge).substr(0, 8);
 							m_biddingMiners.push_back(miner);
 						}
 					}
@@ -494,17 +496,23 @@ public:
 		data.append(_txHash);
 		try
 		{
-			Json::Value result = rpcCall("eth_getTransactionReceipt", data);
+			// check if the tx still exists
+			Json::Value result = rpcCall("eth_getTransactionByHash", data);
+			if (result.isNull())
+				return TxStatus::NotFound;
+
+			// check if the tx has been mined
+			result = rpcCall("eth_getTransactionReceipt", data);
 			if (result["status"].asString() == "0x1")
 				return TxStatus::Succeeded;
 			else if (result["status"].asString() == "0x0")
 				return TxStatus::Failed;
 			else
-				return TxStatus::NotFound;
+				return TxStatus::Waiting;
 		}
 		catch (...)
 		{
-			return TxStatus::NotFound;
+			return TxStatus::Waiting;
 		}
 	}
 
@@ -539,7 +547,6 @@ public:
 
 	void checkPendingTransactions()
 	{
-		int i = 0;
 		vector<Transaction>::iterator it;
 		for (it = m_pendingTxs.begin(); it != m_pendingTxs.end(); )
 		{
@@ -549,8 +556,10 @@ public:
 				LogB << "Tx " << t.receiptHash.substr(0, 10) << " succeeded :)";
 			else if (status == Failed)
 				LogB << "Tx " << t.receiptHash.substr(0, 10) << " failed :(";
+			else if (status == NotFound)
+				LogB << "Tx " << t.receiptHash.substr(0, 10) << " could not be found";
 
-			if (status == NotFound)
+			if (status == Waiting)
 			{
 				// adjust gas price if necessary
 				u256 recommended = RecommendedGasPrice(t.challenge);
@@ -564,8 +573,6 @@ public:
 				++it;
 			} else
 				it = m_pendingTxs.erase(it);
-
-			i++;
 		}
 	}
 
@@ -620,7 +627,7 @@ public:
 		m_lastSolution.restart();
 		t.nonce = m_txNonce;
 		t.receiveAddress = toAddress(m_tokenContract);
-		t.gas = u256(100000);
+		t.gas = u256(130000);
 		ProgOpt::Load("");
 		m_startGas = atoi(ProgOpt::Get("0xBitcoin", "GasPrice").c_str());
 		t.gasPrice = RecommendedGasPrice(_challenge);
