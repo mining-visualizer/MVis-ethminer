@@ -221,7 +221,6 @@ public:
 		Json::Value result;
 		UniqueGuard l(x_biddingMiners, std::defer_lock);
 
-
 		// sign up for pending transactions
 		try
 		{
@@ -292,7 +291,7 @@ public:
 				result.clear();
 			}
 
-			// we've only got the hashes at this point,  so now retrieve each txs 
+			// we've only got the hashes at this point,  so now retrieve each tx
 			for (uint32_t i = 0; i < result.size(); i++) 
 			{
 				string hash = result[i].asString();
@@ -336,7 +335,6 @@ public:
 					LogB << "Error calling eth_getTransactionByHash " << e.what();
 				}
 			}
-
 			l.unlock();
 			this_thread::sleep_for(chrono::milliseconds(1000));
 		}
@@ -520,7 +518,6 @@ public:
 	{
 		UniqueGuard l(x_biddingMiners);
 
-		LogD << "Trace: RecommendedGasPrice";
 		u256 recommendation = 0;
 		for (auto m : m_biddingMiners)
 		{
@@ -528,7 +525,7 @@ public:
 				stricmp(m.account.c_str(), "0x1b7bfB694eE51913c347971c7090a74AEFbd41f6") != 0 &&
 				m.challenge == _challenge)
 			{
-				LogD << "Trace: RecommendedGasPrice, existing bidder " << m.account.substr(0,10) << ", gasPrice=" << m.gasPrice;
+				LogF << "Trace: RecommendedGasPrice, existing bidder " << m.account.substr(0,10) << ", gasPrice=" << m.gasPrice;
 				if (m.gasPrice > recommendation)
 					recommendation = m.gasPrice;
 			}
@@ -539,7 +536,11 @@ public:
 			recommendation = m_startGas;
 		else
 			recommendation += 4;
+
 		if (recommendation < m_startGas)
+			recommendation = m_startGas;
+
+		if (recommendation > m_maxGas)
 			recommendation = m_startGas;
 
 		return recommendation * 1000000000;
@@ -630,6 +631,7 @@ public:
 		t.gas = u256(130000);
 		ProgOpt::Load("");
 		m_startGas = atoi(ProgOpt::Get("0xBitcoin", "GasPrice").c_str());
+		m_maxGas = atoi(ProgOpt::Get("0xBitcoin", "MaxGasPrice").c_str());
 		t.gasPrice = RecommendedGasPrice(_challenge);
 
 		// compute data parameter : first 4 bytes is hash of function signature
@@ -651,7 +653,7 @@ public:
 		t.challenge = _challenge;
 
 		txSignSend(t);
-		LogB << "Tx hash : " << t.receiptHash;
+		LogB << "Tx hash : " << t.receiptHash << ", gasPrice : " << t.gasPrice / 1000000000;
 		m_pendingTxs.push_back(t);
 		return true;
 	}
@@ -756,6 +758,7 @@ private:
 	deque<CMiner> m_biddingMiners;
 	mutable Mutex x_biddingMiners;
 	int m_startGas;
+	int m_maxGas;
 
 };
 
