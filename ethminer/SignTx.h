@@ -130,7 +130,7 @@ public:
 	u256 gas;						///< The total gas to convert, paid for from sender's account. Any unused gas gets refunded once the contract is ended.
 	bytes data;						///< The data associated with the transaction, or the initialiser if it's a creation transaction.
 	h160 m_sender;					///< Cached sender, determined from signature.
-	string receiptHash;				///< hash of tx receipt
+	string txHash;					///< hash of tx
 	bytes challenge;				///< challenge this tx was submitted under.
 
 	h256 m_hashWith;				///< Cached hash of transaction with signature.

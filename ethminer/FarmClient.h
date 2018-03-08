@@ -220,60 +220,69 @@ public:
 		Json::Value data;
 		Json::Value result;
 		UniqueGuard l(x_biddingMiners, std::defer_lock);
-
-		// sign up for pending transactions
-		try
-		{
-			data = Json::Value();
-			result = rpcCall("eth_newPendingTransactionFilter", data);
-			tx_filterID = result.asString();
-		}
-		catch (std::exception& e)
-		{
-			LogB << "Error calling eth_newPendingTransactionFilter" << e.what();
-			tx_filterID = "";
-		}
+		int sleepTime = 10000;
 
 		while (true) {
 
+			if (tx_filterID == "")
+			{
+				// sign up for pending transactions
+				try
+				{
+					data.clear();
+					result = rpcCall("eth_newPendingTransactionFilter", data);
+					tx_filterID = result.asString();
+					sleepTime = 1000;
+				}
+				catch (std::exception& e)
+				{
+					LogB << "Error calling eth_newPendingTransactionFilter" << e.what();
+					tx_filterID = "";
+				}
+			}
+
 			l.lock();
 			// check existing bidders to see if any need removal.
-			deque<CMiner>::iterator it;
-			for (it = m_biddingMiners.begin(); it != m_biddingMiners.end(); )
+			for (int i = m_biddingMiners.size() - 1; i >= 0; i--)
 			{
-				// check to see if the tx they submitted is still there
-				Json::Value tx;
-				data.clear();
-				data.append((*it).txHash);
-				tx = rpcCall("eth_getTransactionByHash", data);
-				if (tx.isNull())
+				CMiner miner = m_biddingMiners[i];
+				try
 				{
-					LogD << "Miner " << (*it).account.substr(0, 10) << " is no longer in the txpool. tx = " << (*it).txHash.substr(0, 10);
-					it = m_biddingMiners.erase(it);
-				} else
-				{
-					// check for the existence of a tx receipt, which indicates the tx got mined.
+					// check to see if the tx they submitted is still there
+					Json::Value tx;
 					data.clear();
-					data.append((*it).txHash);
-					try
+					data.append(miner.txHash);
+					tx = rpcCall("eth_getTransactionByHash", data);
+					if (tx.isNull())
 					{
-						tx = rpcCall("eth_getTransactionReceipt", data);
-						if (!tx.isNull())
+						LogD << "Miner " << miner.account.substr(0, 10) << " is no longer in the txpool. tx = " << miner.txHash.substr(0, 10);
+						m_biddingMiners.erase(m_biddingMiners.begin() + i);
+					} else
+					{
+						// check for the existence of a tx receipt, which indicates the tx got mined.
+						data.clear();
+						data.append(miner.txHash);
+						try
 						{
-							string bidStatus = tx["status"].asString() == "0x1" ? " WON" : (tx["status"].asString() == "0x0" ? " LOST" : " ???");
-							LogD << "Miner " << (*it).account.substr(0, 10) << bidStatus << ", block: "
-								<< HexToInt(tx["blockNumber"].asString()) << ", tx=" << (*it).txHash.substr(0, 10);
-							it = m_biddingMiners.erase(it);
-						} else
+							tx = rpcCall("eth_getTransactionReceipt", data);
+							if (!tx.isNull())
+							{
+								string bidStatus = tx["status"].asString() == "0x1" ? " WON" : (tx["status"].asString() == "0x0" ? " LOST" : " ???");
+								LogD << "Miner " << miner.account.substr(0, 10) << bidStatus << ", block: "
+									<< HexToInt(tx["blockNumber"].asString()) << ", tx=" << miner.txHash.substr(0, 10);
+								m_biddingMiners.erase(m_biddingMiners.begin() + i);
+							}
+						}
+						catch (...)
 						{
-							++it;
+							// most likely transaction receipt not found
 						}
 					}
-					catch (...)
-					{
-						// most likely transaction receipt not found
-						++it;
-					}
+				}
+				catch (std::exception& e)
+				{
+					LogB << "Error calling eth_getTransactionByHash" << e.what();
+					result.clear();
 				}
 			}
 
@@ -336,7 +345,7 @@ public:
 				}
 			}
 			l.unlock();
-			this_thread::sleep_for(chrono::milliseconds(1000));
+			this_thread::sleep_for(chrono::milliseconds(sleepTime));
 		}
 
 	}
@@ -548,32 +557,46 @@ public:
 
 	void checkPendingTransactions()
 	{
-		vector<Transaction>::iterator it;
-		for (it = m_pendingTxs.begin(); it != m_pendingTxs.end(); )
-		{
-			Transaction& t = (*it);
-			TxStatus status = getTxStatus(t.receiptHash);
-			if (status == Succeeded)
-				LogB << "Tx " << t.receiptHash.substr(0, 10) << " succeeded :)";
-			else if (status == Failed)
-				LogB << "Tx " << t.receiptHash.substr(0, 10) << " failed :(";
-			else if (status == NotFound)
-				LogB << "Tx " << t.receiptHash.substr(0, 10) << " could not be found";
+		vector<bytes> needsDeleting;
 
-			if (status == Waiting)
+		for (int i = m_pendingTxs.size() - 1; i >= 0; i--)
+		{
+			Transaction t = m_pendingTxs[i];
+			TxStatus status = getTxStatus(t.txHash);
+			if (status == Succeeded)
+			{
+				needsDeleting.push_back(t.challenge);
+				LogB << "Tx " << t.txHash.substr(0, 10) << " succeeded, gasPrice = " << t.gasPrice / 1000000000 << "  :)";
+			}
+			else if (status == Failed)
+			{
+				needsDeleting.push_back(t.challenge);
+				LogB << "Tx " << t.txHash.substr(0, 10) << " failed, gasPrice = " << t.gasPrice / 1000000000 << "  :(";
+			} 
+			else if (status == Waiting)
 			{
 				// adjust gas price if necessary
 				u256 recommended = RecommendedGasPrice(t.challenge);
 				if (t.gasPrice < recommended)
 				{
 					// increase gas price and resend
+					// but first make a copy of existing tx.  we can't be sure if the old one will get replaced 
+					// by the new one, before one or the other gets mined.
 					t.gasPrice = recommended;
 					txSignSend(t);
-					LogB << "Adjusting gas price to " << t.gasPrice / 1000000000 << ", tx hash=" << t.receiptHash;
+					m_pendingTxs.push_back(t);
+					LogB << "Adjusting gas price to " << t.gasPrice / 1000000000 << ", new tx hash=" << t.txHash;
 				}
-				++it;
-			} else
-				it = m_pendingTxs.erase(it);
+			} 
+		}
+
+		for (auto challenge : needsDeleting)
+		{
+			for (int i = m_pendingTxs.size() - 1; i >= 0; i--)
+			{
+				if (m_pendingTxs[i].challenge == challenge)
+					m_pendingTxs.erase(m_pendingTxs.begin() + i);
+			}
 		}
 	}
 
@@ -589,7 +612,7 @@ public:
 		Json::Value p;
 		p.append(ss.str());
 		Json::Value result = rpcCall("eth_sendRawTransaction", p);
-		t.receiptHash = result.asString();
+		t.txHash = result.asString();
 	}
 
 	bool eth_submitWorkToken(h256 _nonce, bytes _hash, bytes _challenge) throw (jsonrpc::JsonRpcException) {
@@ -653,7 +676,7 @@ public:
 		t.challenge = _challenge;
 
 		txSignSend(t);
-		LogB << "Tx hash : " << t.receiptHash << ", gasPrice : " << t.gasPrice / 1000000000;
+		LogB << "Tx hash : " << t.txHash << ", gasPrice : " << t.gasPrice / 1000000000;
 		m_pendingTxs.push_back(t);
 		return true;
 	}
