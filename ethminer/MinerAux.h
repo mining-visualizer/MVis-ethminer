@@ -68,8 +68,6 @@
 #include "MultiLog.h"
 #include "MVisRPC.h"
 
-//#include <conio.h>
-
 using namespace std;
 using namespace dev;
 using namespace dev::eth;
@@ -771,7 +769,6 @@ private:
 		deque<bytes> recentChallenges;
 
 		int tokenBalance = rpc.tokenBalance();
-		std::thread t1(&FarmClient::bidScanner, &rpc);
 
 		while (true)
 		{
@@ -858,21 +855,9 @@ private:
 					if (lastCheckTx.elapsedMilliseconds() > 1000)
 					{
 						rpc.checkPendingTransactions();
+						rpc.txpoolScanner();
 						lastCheckTx.restart();
 					}
-
-					//if (kbhit() != 0)
-					//{
-					//	int c = getch();
-					//	if (c == 'm')
-					//	{
-					//		h256 nonce;
-					//		bytes hash(32);
-					//		h160 sender(f.minerAcct);
-					//		keccak256_0xBitcoin(challenge, sender, nonce, hash);
-					//		rpc.eth_submitWorkToken(nonce, hash, challenge);
-					//	}
-					//}
 
 					this_thread::sleep_for(chrono::milliseconds(200));
 				}

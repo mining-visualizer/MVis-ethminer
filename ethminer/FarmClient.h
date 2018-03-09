@@ -18,157 +18,6 @@ using namespace dev;
 using namespace dev::eth;
 
 
-
-/** libkeccak-tiny
-*
-* A single-file implementation of SHA-3 and SHAKE.
-*
-* Implementor: David Leon Gil
-* License: CC0, attribution kindly requested. Blame taken too,
-* but not liability.
-*/
-
-#include <stdint.h>
-#include <stdio.h>
-#include <stdlib.h>
-#include <string.h>
-
-/******** The Keccak-f[1600] permutation ********/
-
-/*** Constants. ***/
-static const uint8_t rho[24] = \
-{ 1, 3, 6, 10, 15, 21,
-28, 36, 45, 55, 2, 14,
-27, 41, 56, 8, 25, 43,
-62, 18, 39, 61, 20, 44};
-static const uint8_t pi[24] = \
-{10, 7, 11, 17, 18, 3,
-5, 16, 8, 21, 24, 4,
-15, 23, 19, 13, 12, 2,
-20, 14, 22, 9, 6, 1};
-static const uint64_t RC[24] = \
-{1ULL, 0x8082ULL, 0x800000000000808aULL, 0x8000000080008000ULL,
-0x808bULL, 0x80000001ULL, 0x8000000080008081ULL, 0x8000000000008009ULL,
-0x8aULL, 0x88ULL, 0x80008009ULL, 0x8000000aULL,
-0x8000808bULL, 0x800000000000008bULL, 0x8000000000008089ULL, 0x8000000000008003ULL,
-0x8000000000008002ULL, 0x8000000000000080ULL, 0x800aULL, 0x800000008000000aULL,
-0x8000000080008081ULL, 0x8000000000008080ULL, 0x80000001ULL, 0x8000000080008008ULL};
-
-/*** Helper macros to unroll the permutation. ***/
-#define rol(x, s) (((x) << s) | ((x) >> (64 - s)))
-#define REPEAT6(e) e e e e e e
-#define REPEAT24(e) REPEAT6(e e e e)
-#define REPEAT5(e) e e e e e
-#define FOR5(v, s, e)							\
-	v = 0;										\
-	REPEAT5(e; v += s;)
-
-/*** Keccak-f[1600] ***/
-static inline void keccakf(void* state) {
-	uint64_t* a = (uint64_t*) state;
-	uint64_t b[5] = {0};
-	uint64_t t = 0;
-	uint8_t x, y;
-
-	for (int i = 0; i < 24; i++) {
-		// Theta
-		FOR5(x, 1,
-			 b[x] = 0;
-		FOR5(y, 5,
-			 b[x] ^= a[x + y]; ))
-			FOR5(x, 1,
-				 FOR5(y, 5,
-					  a[y + x] ^= b[(x + 4) % 5] ^ rol(b[(x + 1) % 5], 1); ))
-			// Rho and pi
-			t = a[1];
-		x = 0;
-		REPEAT24(b[0] = a[pi[x]];
-		a[pi[x]] = rol(t, rho[x]);
-		t = b[0];
-		x++; )
-			// Chi
-			FOR5(y,
-				 5,
-				 FOR5(x, 1,
-					  b[x] = a[y + x];)
-				 FOR5(x, 1,
-					  a[y + x] = b[x] ^ ((~b[(x + 1) % 5]) & b[(x + 2) % 5]); ))
-			// Iota
-			a[0] ^= RC[i];
-	}
-}
-
-/******** The FIPS202-defined functions. ********/
-
-/*** Some helper macros. ***/
-
-#define _(S) do { S } while (0)
-#define FOR(i, ST, L, S)							\
-	_(for (size_t i = 0; i < L; i += ST) { S; })
-#define mkapply_ds(NAME, S)						\
-	static inline void NAME(uint8_t* dst,			\
-		const uint8_t* src,						\
-		size_t len) {								\
-		FOR(i, 1, len, S);							\
-	}
-#define mkapply_sd(NAME, S)						\
-	static inline void NAME(const uint8_t* src,	\
-		uint8_t* dst,								\
-		size_t len) {								\
-		FOR(i, 1, len, S);							\
-	}
-
-mkapply_ds(xorin, dst[i] ^= src[i])  // xorin
-mkapply_sd(setout, dst[i] = src[i])  // setout
-
-#define P keccakf
-#define Plen 200
-
-// Fold P*F over the full blocks of an input.
-#define foldP(I, L, F)								\
-	while (L >= rate) {							\
-		F(a, I, rate);								\
-		P(a);										\
-		I += rate;									\
-		L -= rate;									\
-	}
-
-/** The sponge-based hash construction. **/
-int hashtest(uint8_t* out, size_t outlen,
-		const uint8_t* in, size_t inlen,
-		size_t rate, uint8_t delim) 
-{
-	if ((out == NULL) || ((in == NULL) && inlen != 0) || (rate >= Plen)) {
-		return -1;
-	}
-	uint8_t a[Plen] = {0};
-	// Absorb input.
-	//foldP(in, inlen, xorin);
-	// Xor in the DS and pad frame.
-	a[inlen] ^= delim;
-	a[rate - 1] ^= 0x80;
-	// Xor in the last block.
-	xorin(a, in, inlen);
-	// Apply P
-	P(a);
-	// Squeeze output.
-	foldP(out, outlen, setout);
-	setout(a, out, outlen);
-	memset(a, 0, 200);
-	return 0;
-}
-
-int sha3_256(uint8_t* out, size_t outlen, const uint8_t* in, size_t inlen) {								
-	if (outlen > (256/8)) {										
-		return -1;                                                  
-	}																
-	return hashtest(out, outlen, in, inlen, 200 - (256 / 4), 0x01);
-}
-
-
-
-
-
 class FarmClient : public jsonrpc::Client
 {
 public:
@@ -200,152 +49,145 @@ public:
 		m_acctPK = ProgOpt::Get("0xBitcoin", "AcctPK");
 	}
 
-	Json::Value rpcCall(const std::string &_function, const Json::Value &_params)
-	{
-		Guard l(x_callMethod);
-		return CallMethod(_function, _params);
-	}
-
 	void setChallenge(bytes& _challenge)
 	{
-		Guard l(x_recentChallenges);
 		m_recentChallenges.push_front(_challenge);
 		if (m_recentChallenges.size() > 4)
 			m_recentChallenges.pop_back();
 	}
 
 	// this routine runs on a separate thread
-	void bidScanner() 
+	void txpoolScanner() 
 	{
 		Json::Value data;
 		Json::Value result;
-		UniqueGuard l(x_biddingMiners, std::defer_lock);
 		int sleepTime = 10000;
 
-		while (true) {
-
-			if (tx_filterID == "")
-			{
-				// sign up for pending transactions
-				try
-				{
-					data.clear();
-					result = rpcCall("eth_newPendingTransactionFilter", data);
-					tx_filterID = result.asString();
-					sleepTime = 1000;
-				}
-				catch (std::exception& e)
-				{
-					LogB << "Error calling eth_newPendingTransactionFilter" << e.what();
-					tx_filterID = "";
-				}
-			}
-
-			l.lock();
-			// check existing bidders to see if any need removal.
-			for (int i = m_biddingMiners.size() - 1; i >= 0; i--)
-			{
-				CMiner miner = m_biddingMiners[i];
-				try
-				{
-					// check to see if the tx they submitted is still there
-					Json::Value tx;
-					data.clear();
-					data.append(miner.txHash);
-					tx = rpcCall("eth_getTransactionByHash", data);
-					if (tx.isNull())
-					{
-						LogD << "Miner " << miner.account.substr(0, 10) << " is no longer in the txpool. tx = " << miner.txHash.substr(0, 10);
-						m_biddingMiners.erase(m_biddingMiners.begin() + i);
-					} else
-					{
-						// check for the existence of a tx receipt, which indicates the tx got mined.
-						data.clear();
-						data.append(miner.txHash);
-						try
-						{
-							tx = rpcCall("eth_getTransactionReceipt", data);
-							if (!tx.isNull())
-							{
-								string bidStatus = tx["status"].asString() == "0x1" ? " WON" : (tx["status"].asString() == "0x0" ? " LOST" : " ???");
-								LogD << "Miner " << miner.account.substr(0, 10) << bidStatus << ", block: "
-									<< HexToInt(tx["blockNumber"].asString()) << ", tx=" << miner.txHash.substr(0, 10);
-								m_biddingMiners.erase(m_biddingMiners.begin() + i);
-							}
-						}
-						catch (...)
-						{
-							// most likely transaction receipt not found
-						}
-					}
-				}
-				catch (std::exception& e)
-				{
-					LogB << "Error calling eth_getTransactionByHash" << e.what();
-					result.clear();
-				}
-			}
-
-
-			// request the hashes of all txs received since the last time we called.
+		if (tx_filterID == "")
+		{
+			// sign up for pending transactions
 			try
 			{
-				data = Json::Value();
-				data.append(tx_filterID);
-				result = rpcCall("eth_getFilterChanges", data);
+				data.clear();
+				result = CallMethod("eth_newPendingTransactionFilter", data);
+				tx_filterID = result.asString();
+				if (tx_filterID == "")
+					LogS << "Unable to initialize txpool filtering.  Your node may not support it.";
+				else
+					sleepTime = 1000;
 			}
 			catch (std::exception& e)
 			{
-				LogB << "Error calling eth_getFilterChanges" << e.what();
-				result.clear();
+				LogB << "Error calling eth_newPendingTransactionFilter" << e.what();
+				tx_filterID = "";
 			}
+		}
 
-			// we've only got the hashes at this point,  so now retrieve each tx
-			for (uint32_t i = 0; i < result.size(); i++) 
+		// check existing bidders to see if any need removal.
+		for (int i = m_biddingMiners.size() - 1; i >= 0; i--)
+		{
+			CMiner miner = m_biddingMiners[i];
+			try
 			{
-				string hash = result[i].asString();
+				// check to see if the tx they submitted is still there
+				Json::Value tx;
 				data.clear();
-				data.append(hash);
-				try {
-					Json::Value tx = rpcCall("eth_getTransactionByHash", data);
-					if (!tx.isNull()) {
-						string toAddr = tx["to"].asString();
-						string input = tx["input"].asString();
-						// look for txs addressed to the 0xBitcoin contract that are calling the mint() function
-						if (LowerCase(toAddr) == TokenContract && input.substr(0, 10) == "0x1801fbe5") {
-							CMiner miner;
-							miner.txHash = hash;
-							miner.account = tx["from"].asString();
-							miner.gasPrice = HexToInt(tx["gasPrice"].asString()) / 1000000000;
-							// try to determine what challenge this miner is submitting for.
-							// pull out the nonce and the hash
-							h256 nonce = h256(input.substr(10, 64));
-							bytes minerhash = fromHex(input.substr(74, 64));
-							h160 sender = h160(miner.account);
-							bytes hash(32);
-							{
-								Guard l(x_recentChallenges);
-								for (auto c : m_recentChallenges)
-								{
-									keccak256_0xBitcoin(c, sender, nonce, hash);
-									if (hash == minerhash)
-									{
-										miner.challenge = c;
-									}
-								}
-							}
-							LogD << "Miner " << miner.account.substr(0, 10) << " submitted tx " << miner.txHash.substr(0, 10) 
-								<< ". gasPrice=" << miner.gasPrice << ", challenge=" << toHex(miner.challenge).substr(0, 8);
-							m_biddingMiners.push_back(miner);
+				data.append(miner.txHash);
+				tx = CallMethod("eth_getTransactionByHash", data);
+				if (tx.isNull())
+				{
+					LogD << "Miner " << miner.account.substr(0, 10) << " is no longer in the txpool. tx = " << miner.txHash.substr(0, 10);
+					m_biddingMiners.erase(m_biddingMiners.begin() + i);
+				} else
+				{
+					// check for the existence of a tx receipt, which indicates the tx got mined.
+					data.clear();
+					data.append(miner.txHash);
+					try
+					{
+						tx = CallMethod("eth_getTransactionReceipt", data);
+						if (!tx.isNull())
+						{
+							string bidStatus = tx["status"].asString() == "0x1" ? " WON" : (tx["status"].asString() == "0x0" ? " LOST" : " ???");
+							LogD << "Miner " << miner.account.substr(0, 10) << bidStatus << ", block: "
+								<< HexToInt(tx["blockNumber"].asString()) << ", tx=" << miner.txHash.substr(0, 10);
+							m_biddingMiners.erase(m_biddingMiners.begin() + i);
 						}
 					}
-				}
-				catch (std::exception& e) {
-					LogB << "Error calling eth_getTransactionByHash " << e.what();
+					catch (...)
+					{
+						// most likely transaction receipt not found
+					}
 				}
 			}
-			l.unlock();
-			this_thread::sleep_for(chrono::milliseconds(sleepTime));
+			catch (std::exception& e)
+			{
+				LogB << "Error calling eth_getTransactionByHash" << e.what();
+				result.clear();
+			}
+		}
+
+
+		// request the hashes of all txs received since the last time we called.
+		try
+		{
+			if (tx_filterID == "")
+				result.clear();
+			else
+			{
+				data = Json::Value();
+				data.append(tx_filterID);
+				result = CallMethod("eth_getFilterChanges", data);
+			}
+		}
+		catch (std::exception& e)
+		{
+			LogB << "Error calling eth_getFilterChanges" << e.what();
+			result.clear();
+		}
+
+		// we've only got the hashes at this point,  so now retrieve each tx
+		for (uint32_t i = 0; i < result.size(); i++) 
+		{
+			string hash = result[i].asString();
+			data.clear();
+			data.append(hash);
+			try {
+				Json::Value tx = CallMethod("eth_getTransactionByHash", data);
+				if (!tx.isNull()) {
+					string toAddr = tx["to"].asString();
+					string input = tx["input"].asString();
+					// look for txs addressed to the 0xBitcoin contract that are calling the mint() function
+					if (LowerCase(toAddr) == TokenContract && input.substr(0, 10) == "0x1801fbe5") {
+						CMiner miner;
+						miner.txHash = hash;
+						miner.account = tx["from"].asString();
+						miner.gasPrice = HexToInt(tx["gasPrice"].asString()) / 1000000000;
+						// try to determine what challenge this miner is submitting for.
+						// pull out the nonce and the hash
+						h256 nonce = h256(input.substr(10, 64));
+						bytes minerhash = fromHex(input.substr(74, 64));
+						h160 sender = h160(miner.account);
+						bytes hash(32);
+						{
+							for (auto c : m_recentChallenges)
+							{
+								keccak256_0xBitcoin(c, sender, nonce, hash);
+								if (hash == minerhash)
+								{
+									miner.challenge = c;
+								}
+							}
+						}
+						LogD << "Miner " << miner.account.substr(0, 10) << " submitted tx " << miner.txHash.substr(0, 10) 
+							<< ". gasPrice=" << miner.gasPrice << ", challenge=" << toHex(miner.challenge).substr(0, 8);
+						m_biddingMiners.push_back(miner);
+					}
+				}
+			}
+			catch (std::exception& e) {
+				LogB << "Error calling eth_getTransactionByHash " << e.what();
+			}
 		}
 
 	}
@@ -355,7 +197,7 @@ public:
 		// cancel the filter
 		Json::Value data;
 		data.append(tx_filterID);
-		rpcCall("eth_uninstallFilter", data);
+		CallMethod("eth_uninstallFilter", data);
 	}
 
 	int getNextNonce() {
@@ -363,7 +205,7 @@ public:
 		Json::Value p;
 		p.append(m_minerAcct);
 		p.append("latest");
-		Json::Value result = rpcCall("eth_getTransactionCount", p);
+		Json::Value result = CallMethod("eth_getTransactionCount", p);
 		return HexToInt(result.asString());
 	}
 
@@ -387,7 +229,7 @@ public:
 		data.append(p);
 		data.append("latest");
 
-		Json::Value result = rpcCall("eth_call", data);
+		Json::Value result = CallMethod("eth_call", data);
 		u256 balance = u256(result.asString()) / 100000000;
 		if (result.isString()) {
 			return static_cast<uint64_t>(balance);
@@ -398,7 +240,7 @@ public:
 	Json::Value eth_getWork() throw (jsonrpc::JsonRpcException) {
 		Json::Value p;
 		p = Json::nullValue;
-		Json::Value result = rpcCall("eth_getWork", p);
+		Json::Value result = CallMethod("eth_getWork", p);
 		if (result.isArray())
 			return result;
 		else
@@ -419,7 +261,7 @@ public:
 		data.append(p);
 		data.append("latest");
 
-		Json::Value result = rpcCall("eth_call", data);
+		Json::Value result = CallMethod("eth_call", data);
 		if (result.isString()) {
 			_challenge = fromHex(result.asString());
 		} else
@@ -435,7 +277,7 @@ public:
 		data.append(p);
 		data.append("latest");
 
-		result = rpcCall("eth_call", data);
+		result = CallMethod("eth_call", data);
 		if (result.isString()) {
 			_target = h256(result.asString());
 		} else
@@ -460,7 +302,7 @@ public:
 		data.append(p);
 		data.append("latest");
 
-		Json::Value result = rpcCall("eth_call", data);
+		Json::Value result = CallMethod("eth_call", data);
 		if (result.isString()) {
 			lastRewardTo = "0x" + result.asString().substr(26);
 		} else
@@ -475,7 +317,7 @@ public:
 		data.append(p);
 		data.append("latest");
 
-		result = rpcCall("eth_call", data);
+		result = CallMethod("eth_call", data);
 		if (result.isString()) {
 			lastRewardEthBlockNumber = u256(result.asString());
 		} else
@@ -490,7 +332,7 @@ public:
 		p.append(param1);
 		p.append(param2);
 		p.append(param3);
-		Json::Value result = rpcCall("eth_submitWork", p);
+		Json::Value result = CallMethod("eth_submitWork", p);
 		if (result.isBool())
 			return result.asBool();
 		else
@@ -504,12 +346,12 @@ public:
 		try
 		{
 			// check if the tx still exists
-			Json::Value result = rpcCall("eth_getTransactionByHash", data);
+			Json::Value result = CallMethod("eth_getTransactionByHash", data);
 			if (result.isNull())
 				return TxStatus::NotFound;
 
 			// check if the tx has been mined
-			result = rpcCall("eth_getTransactionReceipt", data);
+			result = CallMethod("eth_getTransactionReceipt", data);
 			if (result["status"].asString() == "0x1")
 				return TxStatus::Succeeded;
 			else if (result["status"].asString() == "0x0")
@@ -525,8 +367,6 @@ public:
 
 	u256 RecommendedGasPrice(bytes _challenge)
 	{
-		UniqueGuard l(x_biddingMiners);
-
 		u256 recommendation = 0;
 		for (auto m : m_biddingMiners)
 		{
@@ -611,14 +451,14 @@ public:
 		// submit to the node 
 		Json::Value p;
 		p.append(ss.str());
-		Json::Value result = rpcCall("eth_sendRawTransaction", p);
+		Json::Value result = CallMethod("eth_sendRawTransaction", p);
 		t.txHash = result.asString();
 	}
 
 	bool eth_submitWorkToken(h256 _nonce, bytes _hash, bytes _challenge) throw (jsonrpc::JsonRpcException) {
 
 		try {
-			// check if the other miner already submitted a solution for this challenge
+			// check if any other miner in our farm already submitted a solution for this challenge
 			boost::filesystem::path m_challengeFilename = boost::filesystem::path(ProgOpt::Get("0xBitcoin", "ChallengeFolder")) / "challenge.txt";
 			ifstream ifs;
 			if (boost::filesystem::exists(m_challengeFilename)) {
@@ -626,7 +466,7 @@ public:
 				ifs.open(m_challengeFilename.generic_string(), fstream::in);
 				getlineEx(ifs, s);
 				if (s == toHex(_challenge)) {
-					LogS << "The other miner already got this one : " << toHex(_challenge).substr(0, 8);
+					LogS << "Another miner in the local farm already got this one : " << toHex(_challenge).substr(0, 8);
 					return false;
 				}
 			}
@@ -686,7 +526,7 @@ public:
 		Json::Value p;
 		p.append(param1);
 		p.append(param2);
-		Json::Value result = rpcCall("eth_submitHashrate", p);
+		Json::Value result = CallMethod("eth_submitHashrate", p);
 		if (result.isBool())
 			return result.asBool();
 		else
@@ -696,7 +536,7 @@ public:
 	Json::Value eth_awaitNewWork() throw (jsonrpc::JsonRpcException) {
 		Json::Value p;
 		p = Json::nullValue;
-		Json::Value result = rpcCall("eth_awaitNewWork", p);
+		Json::Value result = CallMethod("eth_awaitNewWork", p);
 		if (result.isArray())
 			return result;
 		else
@@ -706,7 +546,7 @@ public:
 	bool eth_progress() throw (jsonrpc::JsonRpcException) {
 		Json::Value p;
 		p = Json::nullValue;
-		Json::Value result = rpcCall("eth_progress", p);
+		Json::Value result = CallMethod("eth_progress", p);
 		if (result.isBool())
 			return result.asBool();
 		else
@@ -774,12 +614,9 @@ private:
 	int m_txNonce = -1;
 	Timer m_lastSolution;
 	vector<Transaction> m_pendingTxs;
-	mutable Mutex x_callMethod;
 	string tx_filterID;
 	deque<bytes> m_recentChallenges;
-	mutable Mutex x_recentChallenges;
 	deque<CMiner> m_biddingMiners;
-	mutable Mutex x_biddingMiners;
 	int m_startGas;
 	int m_maxGas;
 
