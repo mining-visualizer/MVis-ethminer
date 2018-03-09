@@ -656,6 +656,11 @@ public:
 		return miners;
 	}
 
+	void shutdown()
+	{
+		m_shutdown = true;
+	}
+
 
 private:
 
@@ -737,9 +742,7 @@ private:
 		f.hashRates().update();
 		LogXY(1, 1) << "Rates:" << f.hashRates() << " | Temp: " << f.getMinerTemps() << " | Fan: " << f.getFanSpeeds() << "         ";
 		LogXY(1, 2) << "Block #: " << f.currentBlock << " | Block time: " << elapsedSeconds(lastBlockTime)
-			<< " | Target: " << upper64OfHash(f.boundary()) << "         ";
-		LogXY(1, 3) << "Best hash: " << f.bestHash() << " | Tokens: " << tokenBalance << " | Solutions: " << f.getSolutionStats().getAccepts()
-			<< " | Hash faults: " << f.getHashFaults() << "         ";
+			<< " | Solutions: " << f.getSolutionStats().getAccepts() << " | Tokens: " << tokenBalance;
 	}
 
 
@@ -770,7 +773,7 @@ private:
 
 		int tokenBalance = rpc.tokenBalance();
 
-		while (true)
+		while (!m_shutdown)
 		{
 			try
 			{
@@ -789,6 +792,17 @@ private:
 					{
 						if (lastHashRateDisplay.elapsedSeconds() >= 2.0 && f.isMining())
 						{
+							int blkNum = 0;
+							try
+							{
+								blkNum = mvisRPC->getBlockNumber() + 1;
+							}
+							catch (...) {}
+							if (blkNum != 0 && blkNum != f.currentBlock)
+							{
+								f.currentBlock = blkNum;
+								lastBlockTime.restart();
+							}
 							positionedOutput(f, lastBlockTime, tokenBalance);
 							lastHashRateDisplay.restart();
 						}
@@ -830,26 +844,11 @@ private:
 								challenge = _challenge;
 								target = _target;
 								LogB << "New challenge : " << toHex(_challenge).substr(0, 8);
-								try
-								{
-									f.currentBlock = mvisRPC->getBlockNumber() + 1;
-								}
-								catch (...) {}
 								f.setWork_token(challenge, target);
-								lastBlockTime.restart();
-
-								//rpc.eth_getLastBlockData();
 								rpc.setChallenge(challenge);
 
 							}
 						}
-					}
-
-					if (lastBlockTime.elapsedSeconds() > m_worktimeout && failOverAvailable())
-					{
-						LogB << "No new work received in " << m_worktimeout << " seconds.";
-						// quick & dirty way to break out of 2 loops
-						goto out;
 					}
 
 					if (lastCheckTx.elapsedMilliseconds() > 1000)
@@ -902,9 +901,8 @@ private:
 			}
 		}
 
-out:
 		mvisRPC->disconnect("notify");
-		rpc.closeBidScanner();
+		rpc.closeTxFilter();
 
 	}	// doFarm
 
@@ -989,4 +987,5 @@ private:
 	unsigned m_maxFarmRetries = 4;
 	unsigned m_pollingInterval = 200;
 	unsigned m_worktimeout = 180;
+	bool m_shutdown = false;
 };

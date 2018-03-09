@@ -47,6 +47,10 @@ public:
 		m_minerAcct = ProgOpt::Get("0xBitcoin", "MinerAcct");
 		m_tokenContract = ProgOpt::Get("0xBitcoin", "TokenContract");
 		m_acctPK = ProgOpt::Get("0xBitcoin", "AcctPK");
+		m_bidTop = 2;
+		string s = ProgOpt::Get("0xBitcoin", "BidTop", "2");
+		if (isDigits(s))
+			m_bidTop = atoi(s.c_str());
 	}
 
 	void setChallenge(bytes& _challenge)
@@ -192,7 +196,7 @@ public:
 
 	}
 
-	void closeBidScanner() {
+	void closeTxFilter() {
 		if (tx_filterID == "") return;
 		// cancel the filter
 		Json::Value data;
@@ -384,7 +388,7 @@ public:
 		if (recommendation == 0)
 			recommendation = m_startGas;
 		else
-			recommendation += 4;
+			recommendation += m_bidTop;
 
 		if (recommendation < m_startGas)
 			recommendation = m_startGas;
@@ -619,6 +623,7 @@ private:
 	deque<CMiner> m_biddingMiners;
 	int m_startGas;
 	int m_maxGas;
+	int m_bidTop;
 
 };
 

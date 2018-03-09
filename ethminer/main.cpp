@@ -54,7 +54,8 @@ void shutDown()
 	LogS << "Shutting down ...";
 	if (ethminer.mvisRPC)
 		ethminer.mvisRPC->disconnect("notify");
-	this_thread::sleep_for(chrono::milliseconds(100));
+	ethminer.shutdown();
+	this_thread::sleep_for(chrono::milliseconds(300));
 }
 
 #if defined(_WIN32)
