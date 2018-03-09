@@ -468,32 +468,30 @@ public:
 	*/
 	void accumulateHashes(unsigned _n, int _batchCount)
 	{
-		static Timer s_timer;
-		static uint64_t s_hashCount = 0;
 
 		if (_batchCount < 2)
 		{
 			// we ignore the first few batches.  when cl_miner.search() starts out, after a new
 			// work package has arrived, it experiences an extra delay because it has to wait for 
 			// the last kernel run from the previous work package to finish.
-			s_hashCount = 0;
-			s_timer.restart();
+			m_hashCount = 0;
+			m_hashTimer.restart();
 			return;
 		}
-		s_hashCount += _n;
-		uint64_t elapsed = s_timer.elapsedMicroseconds();
+		m_hashCount += _n;
+		uint64_t elapsed = m_hashTimer.elapsedMicroseconds();
 		// we'll accumulate hashes for awhile and then update our exponential moving average.
 		if (elapsed / 1000 > 700)
 		{
-			double batchRate = (double) s_hashCount / elapsed;
+			double batchRate = (double) m_hashCount / elapsed;
 			m_hashRate.newVal(batchRate);
-			s_hashCount = 0;
-			s_timer.restart();
+			m_hashCount = 0;
+			m_hashTimer.restart();
 			LogF << "accumulateHashes.update: batch rate = " << batchRate << ", hash rate = " << m_hashRate.value();
 		}
 		else
 		{
-			LogF << "accumulateHashes.accumulate: hashes = " << s_hashCount << ", time = " << elapsed / 1000;
+			LogF << "accumulateHashes.accumulate: hashes = " << m_hashCount << ", time = " << elapsed / 1000;
 		}
 	}	// accumulateHashes
 
@@ -573,6 +571,8 @@ protected:
 
 private:
 
+	uint64_t m_hashCount = 0;
+	Timer m_hashTimer;
 	mutable SharedMutex x_hashRates;
 	EMA m_hashRate = EMA(4);
 	// start time of hash rate accumulation period

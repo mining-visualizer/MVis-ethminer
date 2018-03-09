@@ -112,7 +112,7 @@ public:
 						tx = CallMethod("eth_getTransactionReceipt", data);
 						if (!tx.isNull())
 						{
-							string bidStatus = tx["status"].asString() == "0x1" ? " WON" : (tx["status"].asString() == "0x0" ? " LOST" : " ???");
+							string bidStatus = tx["status"].asString() == "0x1" ? " won" : (tx["status"].asString() == "0x0" ? " lost" : " ???");
 							LogD << "Miner " << miner.account.substr(0, 10) << bidStatus << ", block: "
 								<< HexToInt(tx["blockNumber"].asString()) << ", tx=" << miner.txHash.substr(0, 10);
 							m_biddingMiners.erase(m_biddingMiners.begin() + i);
@@ -233,12 +233,17 @@ public:
 		data.append(p);
 		data.append("latest");
 
-		Json::Value result = CallMethod("eth_call", data);
-		u256 balance = u256(result.asString()) / 100000000;
-		if (result.isString()) {
+		try
+		{
+			Json::Value result = CallMethod("eth_call", data);
+			u256 balance = u256(result.asString()) / 100000000;
 			return static_cast<uint64_t>(balance);
-		} else
-			throw jsonrpc::JsonRpcException(jsonrpc::Errors::ERROR_CLIENT_INVALID_RESPONSE, result.toStyledString());
+		}
+		catch (std::exception& e)
+		{
+			LogB << "Error in routine tokenBalance: " << e.what();
+			return 0;
+		}
 	}
 
 	Json::Value eth_getWork() throw (jsonrpc::JsonRpcException) {

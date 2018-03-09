@@ -239,8 +239,8 @@ bool ethash_cl_miner::configureGPU(
 			_device.getInfo(CL_DEVICE_GLOBAL_MEM_SIZE, &result);
 			if (result >= requiredSize)
 			{
-				std::string s = string(_device.getInfo<CL_DEVICE_NAME>().c_str());
-				LogS << "Found suitable OpenCL device [" << s << "] with " << result << " bytes of GPU memory";
+				//std::string s = string(_device.getInfo<CL_DEVICE_NAME>().c_str());
+				//LogS << "Found suitable OpenCL device [" << s << "] with " << result << " bytes of GPU memory";
 				return true;
 			}
 

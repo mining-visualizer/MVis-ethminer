@@ -186,11 +186,8 @@ void EthashGPUMiner::workLoop()
 		uint64_t startN = 0;
 		if (w.exSizeBits >= 0)
 			startN = w.startNonce | ((uint64_t)index() << (64 - 4 - w.exSizeBits)); // this can support up to 16 devices
-		uint64_t threshold = upper64OfHash(target);
 
-		//threshold = 0x0000000080000000;	// about right
-		//threshold = 0x0000040000000000;	// ETC
-		//m_miner->testHashes();
+		uint64_t threshold = upper64OfHash(target);
 
 		m_miner->search(challenge, threshold, *m_hook);
 	}

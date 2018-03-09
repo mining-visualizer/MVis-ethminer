@@ -760,6 +760,7 @@ private:
 		unsigned farmRetries = 0;
 		int maxRetries = failOverAvailable() ? m_maxFarmRetries : c_StopWorkAt;
 		bool connectedToNode = false;
+		string gasPriceBidding = ProgOpt::Get("0xBitcoin", "GasPriceBidding", "0");
 
 		LogS << "Connecting to node at " << _nodeURL + ":" + _rpcPort << " ...";
 		jsonrpc::HttpClient client(_nodeURL + ":" + _rpcPort);
@@ -843,6 +844,10 @@ private:
 									recentChallenges.pop_back();
 								challenge = _challenge;
 								target = _target;
+
+								//target = h256(0x0000000080000000);	// easy target for testing
+								//target = (u256) target << 192;
+
 								LogB << "New challenge : " << toHex(_challenge).substr(0, 8);
 								f.setWork_token(challenge, target);
 								rpc.setChallenge(challenge);
@@ -854,7 +859,8 @@ private:
 					if (lastCheckTx.elapsedMilliseconds() > 1000)
 					{
 						rpc.checkPendingTransactions();
-						rpc.txpoolScanner();
+						if (gasPriceBidding == "1")
+							rpc.txpoolScanner();
 						lastCheckTx.restart();
 					}
 
