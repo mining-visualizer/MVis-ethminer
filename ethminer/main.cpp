@@ -80,9 +80,7 @@ void CtrlHandlerPosix(int s){
 void donations()
 {
 	cout
-	<< " Please consider a donation to :" << endl
-	<< "    ETH : mining-visualizer.eth  (0xA804e933301AA2C919D3a9834082Cddda877C205)" << endl
-	<< "    ETC : 0x29224Be72851D7Bad619f64c2E51E8Ca5Ba1094b" << endl
+	<< " Please consider a donation to mining-visualizer.eth  (0xA804e933301AA2C919D3a9834082Cddda877C205)" << endl
 	<< " " << endl;
 }
 

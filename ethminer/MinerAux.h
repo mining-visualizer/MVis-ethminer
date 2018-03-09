@@ -558,18 +558,7 @@ public:
 		_out
 			<< " Node configuration:" << endl
 			<< "    -N, --node <host:rpc_port>  Host address and RPC port of your node. (default: 127.0.0.1:8545)" << endl
-			<< "    -S, --stratum-port <port>  Stratum port of your node (default: disabled).  Setting this option" << endl
-			<< "        implicitly enables stratum mode, otherwise polling method is used to obtain work packages (ie. getWork)" << endl
-			<< "    -P, --stratum-pwd <string>  Stratum password (default: disabled)" << endl
-			<< "    -N2, --node2 <host:rpc_port>  Failover node (default: disabled)" << endl
-			<< "    -S2, --stratum-port2 <port>  Stratum port of failover node (default: disabled)" << endl
-			<< "    -P2, --stratum-pwd2 <string>  Stratum password of failover node (default: disabled)" << endl
-			<< "    -I, --polling-interval <n>  If using getWork (polling) to obtain work packages, check for new work" << endl
-			<< "        every <n> milliseconds (default: 200). Does not apply to stratum mode (-S)." << endl
-			<< "    --work-timeout <n> In stratum mode, if more than <n> seconds go by with no new work package, attempt" << endl
-			<< "        to reconnect, or, if a failover node is available, switch to the failover.  Defaults to 180. Don't" << endl
-			<< "        set lower than max. avg. block time" << endl
-			<< "    -R, --farm-retries <n> Number of retries until switch to failover (default: 4)" << endl
+			<< "    -I, --polling-interval <n>  Check for new work every <n> milliseconds (default: 200). " << endl
 			<< endl
 			<< " Benchmarking mode:" << endl
 			<< "    -M [<n>],--benchmark [<n>] Benchmark for mining and exit; Optionally specify block number to benchmark" << endl
@@ -584,37 +573,15 @@ public:
 			<< "    --cl-local-work <n> Set the OpenCL local work size. Default is " << toString(ethash_cl_miner::c_defaultLocalWorkSize) << endl
 			<< "    --cl-work-multiplier <n> This value multiplied by the cl-local-work value equals the number of hashes computed per kernel " << endl
 			<< "       run (ie. global work size). (Default: " << toString(ethash_cl_miner::c_defaultWorkSizeMultiplier) << ")" << endl
-#if ETH_ETHASHCUDA
-			<< "    -U,--cuda  When mining use the GPU via CUDA." << endl
-			<< "    -X,--cuda-opencl Use OpenCL + CUDA in a system with mixed AMD/Nvidia cards. May require setting --opencl-platform 1" << endl
-#endif
 			<< "    --opencl-platform <n>  When mining using -G/--opencl use OpenCL platform n (default: 0)." << endl
 			<< "    --opencl-device <n>  When mining using -G/--opencl use OpenCL device n (default: 0)." << endl
 			<< "    --opencl-devices <0 1 ..n> Select which OpenCL devices to mine on. Default is to use all" << endl
 			<< "    -t, --mining-threads <n> Limit number of CPU/GPU miners to n (default: use everything available on selected platform)" << endl
 			<< "    --allow-opencl-cpu  Allows CPU to be considered as an OpenCL device if the OpenCL platform supports it." << endl
 			<< "    --list-devices List the detected OpenCL/CUDA devices and exit. Should be combined with -G or -U flag" << endl
-			<< "    -L, --dag-load-mode <mode> DAG generation mode." << endl
-			<< "            parallel    - load DAG on all GPUs at the same time (default)" << endl
-			<< "            sequential  - load DAG on GPUs one after another. Use this when the miner crashes during DAG generation" << endl
-			<< "            single <n>  - generate DAG on device n, then copy to other devices" << endl
 			<< "    --cl-extragpu-mem <n> Set the memory (in MB) you believe your GPU requires for stuff other than mining. default: 0" << endl
-#if ETH_ETHASHCUDA
-			<< "    --cuda-extragpu-mem Set the memory (in MB) you believe your GPU requires for stuff other than mining. Windows rendering e.t.c.." << endl
-			<< "    --cuda-block-size Set the CUDA block work size. Default is " << toString(ethash_cuda_miner::c_defaultBlockSize) << endl
-			<< "    --cuda-grid-size Set the CUDA grid size. Default is " << toString(ethash_cuda_miner::c_defaultGridSize) << endl
-			<< "    --cuda-streams Set the number of CUDA streams. Default is " << toString(ethash_cuda_miner::c_defaultNumStreams) << endl
-			<< "    --cuda-schedule <mode> Set the schedule mode for CUDA threads waiting for CUDA devices to finish work. Default is 'sync'. Possible values are:" << endl
-			<< "            auto  - Uses a heuristic based on the number of active CUDA contexts in the process C and the number of logical processors in the system P. If C > P, then yield else spin." << endl
-			<< "            spin  - Instruct CUDA to actively spin when waiting for results from the device." << endl
-			<< "            yield - Instruct CUDA to yield its thread when waiting for results from the device." << endl
-			<< "            sync  - Instruct CUDA to block the CPU thread on a synchronization primitive when waiting for the results from the device." << endl
-			<< "    --cuda-devices <0 1 ..n> Select which CUDA GPUs to mine on. Default is to use all" << endl
-#endif
 			<< endl
 			<< " Miscellaneous Options:" << endl
-			<< "    --export-dag <n>  - Generate DAG for block <n> and save as file in executable folder " << endl
-			<< "    --verify-dag      - Spot check DAG entries " << endl
 			<< "    --config <FileSpec>  - Full path to an INI file containing program options. Windows default: %LocalAppData%/ethminer/ethminer.ini " << endl
 			<< "                           Linux default: $HOME/.config/ethminer/ethminer.ini.  If this option is specified,  it must appear before " << endl
 			<< "                           all others." << endl
@@ -991,7 +958,7 @@ private:
 	std::vector<node_t> m_nodes;
 
 	unsigned m_maxFarmRetries = 4;
-	unsigned m_pollingInterval = 200;
+	unsigned m_pollingInterval = 1000;
 	unsigned m_worktimeout = 180;
 	bool m_shutdown = false;
 };
