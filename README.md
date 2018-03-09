@@ -2,6 +2,9 @@
 
 This is a fork of Genoil's ethminer-0.9.41-genoil-1.x.x, which was a fork of the Ethereum Foundation ethminer.  It is part of the [Mining Visualizer](https://github.com/mining-visualizer/Mining-Visualizer) suite of programs, and as such the main emphasis is on solo mining.  Pool mining is currently not supported.
 
+**0xBitcoin!!** : If you are looking for the 0xBitcoin miner, it's on the [0xBitcoin branch](https://github.com/mining-visualizer/MVis-ethminer/tree/0xbitcoin)
+
+
 **Platform support** : Windows, Linux
 
 ### Distinguishing Features
