@@ -142,11 +142,11 @@ public:
 		string s = string(_argN);
 		LowerCase(s);
 		// boost asio doesn't like the http:// prefix (stratum mining)
-		if (s.find("http") != string::npos)
-		{
-			LogS << "Invalid " << _arg << " argument. Do not specify the 'http://' prefix, just IP or Host.";
-			return false;
-		}
+		//if (s.find("http") != string::npos)
+		//{
+		//	LogS << "Invalid " << _arg << " argument. Do not specify the 'http://' prefix, just IP or Host.";
+		//	return false;
+		//}
 
 		size_t p = s.find_last_of(":");
 		if (p > 0)
