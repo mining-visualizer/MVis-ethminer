@@ -77,6 +77,69 @@ General Options:
     -h,--help  Show this help message and exit.
 ```
 
+#### INI File Settings
+
+```
+
+;--------------------------------------------------------
+[Node]
+
+; IP and RPC port of your primary node.  Defaults to 127.0.0.1 and 8545
+Host=127.0.0.1
+;Host=https://mainnet.infura.io/your_api_key
+RPCPort=8545
+
+;--------------------------------------------------------
+[0xBitcoin]
+
+; Your ETH account and private key.  Note the acct starts with 0x, but
+; not the PK.  Mining rewards will be deposited to this account.  Transaction
+; fees will be DRAWN from this account.  Make sure you have enough funds!!
+MinerAcct=0x........................................
+AcctPK=................................................................
+
+; 0xBitcoin contract address. normally you will not change this
+TokenContract=0xb6ed7644c69416d67b522e20bc294a9a9b405b31
+
+; when your miner finds a solution, transactions will be submitted with this 
+; amount of gas (gwei).  You can change this setting 'on the fly' (without having
+; to restart the miner).  All other setting changes require the miner to be restarted.
+GasPrice=5
+
+; Set to 1 to enable gas price bidding.  Transactions will be submitted
+; with [GasPrice] gas, unless there is someone else bidding, in which case
+; the gas price will be set to the price of the competing bid + [BidTop], up
+; to a maximum of [MaxGasPrice]. This feature has only been tested when running
+; Geth as a local node.  It is NOT supported by Infura nodes.
+GasPriceBidding=0
+
+; max gas price you're willing to bid up to
+MaxGasPrice=35
+
+; the # of gwei to top the highest bidder
+BidTop=2
+
+; if you have multiple mining rigs, specify a shared folder to make sure
+; multiple miners don't try to submit a solution for the same challenge.
+; eg. ChallengeFolder=\\DESKTOP\folder_name
+ChallengeFolder=
+
+
+;--------------------------------------------------------
+[ThermalProtection]
+
+; Temperature provider ('amd_adl' or 'speedfan')
+TempProvider=amd_adl
+
+; Default temperature at which GPU throttling is activated. This applies to all GPUs on this mining rig.
+; Note: throttling is at the hashing level, not the driver level.
+ThrottleTemp=80
+
+; Number of seconds after which the entire mining rig will shutdown if one or more GPUs
+; remain at or above ThrottleTemp.
+ShutDown=20
+
+```
 
 ### Building on Windows
 
