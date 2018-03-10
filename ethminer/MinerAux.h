@@ -646,11 +646,10 @@ private:
 		string platformInfo = _m == MinerType::CPU ? "CPU" : (_m == MinerType::CL ? "CL" : "CUDA");
 		LogS << "Benchmarking on platform: " << platformInfo;
 
-		LogS << "Preparing DAG for block #" << m_benchmarkBlock;
-
-		genesis.setDifficulty(u256(1) << 63);
-		f.setWork(genesis);
+		h256 target = h256(1);	
+		bytes challenge(32);
 		f.start(createMiners(_m, &f));
+		f.setWork_token(challenge, target);
 
 		vector<double> results;
 		double mean = 0;
