@@ -104,9 +104,9 @@ void ADLUtils::init()
 
 		if (adapter.iBusNumber < 0) continue;
 		// check if the adapter is active
-		int adapterActive = 0;
-		ADL2_Adapter_Active_Get(context, adapter.iAdapterIndex, &adapterActive);
-		if (!adapterActive) continue;
+		//int adapterActive = 0;
+		//ADL2_Adapter_Active_Get(context, adapter.iAdapterIndex, &adapterActive);
+		//if (!adapterActive) continue;
 		// this, I believe, will tell us if we're looking at the same gpu as the previous one.
 		if (adapter.iBusNumber == busNumber) continue;
 
