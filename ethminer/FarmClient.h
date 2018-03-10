@@ -76,13 +76,14 @@ public:
 				result = CallMethod("eth_newPendingTransactionFilter", data);
 				tx_filterID = result.asString();
 				if (tx_filterID == "")
-					LogS << "Unable to initialize txpool filtering.  Your node may not support it.";
+					LogS << "Unable to initialize txpool filtering.  Your node may not support it. Try disabling GasPriceBidding.";
 				else
 					sleepTime = 1000;
 			}
 			catch (std::exception& e)
 			{
 				LogB << "Error calling eth_newPendingTransactionFilter" << e.what();
+				LogB << "Your node may not support txpool filtering. Try disabling GasPriceBidding.";
 				tx_filterID = "";
 			}
 		}
