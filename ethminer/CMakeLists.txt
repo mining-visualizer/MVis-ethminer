@@ -3,6 +3,11 @@ set(CMAKE_AUTOMOC OFF)
 
 aux_source_directory(. SRC_LIST)
 
+set(SRC_LIST
+   ${SRC_LIST}
+   ${CMAKE_CURRENT_SOURCE_DIR}/secp256k1/secp256k1.c
+)
+
 include_directories(BEFORE ..)
 include_directories(${Boost_INCLUDE_DIRS})
 
@@ -58,3 +63,4 @@ if (APPLE)
 else()
 	eth_install_executable(${EXECUTABLE})
 endif()
+
