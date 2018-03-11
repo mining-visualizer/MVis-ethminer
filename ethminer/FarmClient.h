@@ -380,9 +380,7 @@ public:
 		u256 recommendation = 0;
 		for (auto m : m_biddingMiners)
 		{
-			if (stricmp(m.account.c_str(), "0x8940C61831C3A2ba1Fb9e50f27260B5b5Af1A3EB") != 0 &&
-				stricmp(m.account.c_str(), "0x1b7bfB694eE51913c347971c7090a74AEFbd41f6") != 0 &&
-				m.challenge == _challenge)
+			if (m.challenge == _challenge)
 			{
 				LogF << "Trace: RecommendedGasPrice, existing bidder " << m.account.substr(0,10) << ", gasPrice=" << m.gasPrice;
 				if (m.gasPrice > recommendation)

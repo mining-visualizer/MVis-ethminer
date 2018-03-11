@@ -1,6 +1,6 @@
 #pragma once
 
-#include <ethminer\secp256k1\secp256k1.h>
+#include <ethminer/secp256k1/secp256k1.h>
 
 using namespace std;
 using namespace dev;
