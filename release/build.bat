@@ -5,7 +5,7 @@ REM the expression %~dp0 returns the drive and folder in which this batch file i
 cd %~dp0
 
 
-"C:\Program Files (x86)\MSBuild\14.0\Bin\MSBuild.exe" /m:3 "..\build\MVis-ethminer.sln" /t:Rebuild /p:Configuration=Release
+"C:\Program Files (x86)\MSBuild\14.0\Bin\MSBuild.exe" /m:3 "..\build\MVis-ethminer.sln" /t:Build /p:Configuration=Release
 IF ERRORLEVEL 1 GOTO ERROR
 
 

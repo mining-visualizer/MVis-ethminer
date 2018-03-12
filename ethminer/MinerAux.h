@@ -851,7 +851,7 @@ private:
 			catch (jsonrpc::JsonRpcException& e)
 			{
 				connectedToNode = false;
-				LogS << "An error occurred communicating with the node : " << e.what();
+				LogB << "An error occurred communicating with the node : " << e.what();
 				LogS << "Trying again in 5 seconds ...";
 				farmRetries++;
 				if (farmRetries == maxRetries)
