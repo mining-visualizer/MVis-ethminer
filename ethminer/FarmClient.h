@@ -42,15 +42,81 @@ public:
 	};
 
 	// Constructor
-	FarmClient(jsonrpc::IClientConnector &conn, jsonrpc::clientVersion_t type = jsonrpc::JSONRPC_CLIENT_V2) : jsonrpc::Client(conn, type) 
+	FarmClient(
+		jsonrpc::IClientConnector &conn, 
+		OperationMode _opMode,
+		jsonrpc::clientVersion_t type = jsonrpc::JSONRPC_CLIENT_V2
+	) : jsonrpc::Client(conn, type)
 	{
+		m_opMode = _opMode;
 		m_minerAcct = ProgOpt::Get("0xBitcoin", "MinerAcct");
-		m_tokenContract = ProgOpt::Get("0xBitcoin", "TokenContract");
-		m_acctPK = ProgOpt::Get("0xBitcoin", "AcctPK");
-		m_bidTop = 2;
-		string s = ProgOpt::Get("0xBitcoin", "BidTop", "2");
-		if (isDigits(s))
-			m_bidTop = atoi(s.c_str());
+		if (_opMode == OperationMode::Solo)
+		{
+			m_tokenContract = ProgOpt::Get("0xBitcoin", "TokenContract");
+			m_acctPK = ProgOpt::Get("0xBitcoin", "AcctPK");
+			m_bidTop = 2;
+			string s = ProgOpt::Get("0xBitcoin", "BidTop", "2");
+			if (isDigits(s))
+				m_bidTop = atoi(s.c_str());
+		}
+	}
+
+	void getWork(bytes& _challenge, h256& _target)
+	{
+		if (m_opMode == OperationMode::Solo)
+			getWorkNode(_challenge, _target);
+		else
+			getWorkPool(_challenge, _target);
+	}
+
+	void getWorkPool(bytes& _challenge, h256& _target)
+	{
+		Json::Value data;
+		Json::Value result = CallMethod("getChallengeNumber", data);
+		_challenge = fromHex(result.asString());
+		result = CallMethod("getMinimumShareTarget", data);
+		_target = h256(result.asString());
+	}
+
+	void getWorkNode(bytes& _challenge, h256& _target) throw (jsonrpc::JsonRpcException)
+	{
+		// challenge
+		Json::Value p;
+		p["from"] = m_minerAcct;			// ETH address (Jaxx HD)
+		p["to"] = m_tokenContract;			// 0xbitcoin contract address
+
+		h256 bMethod = sha3("getChallengeNumber()");
+		std::string sMethod = toHex(bMethod, dev::HexPrefix::Add);
+		p["data"] = sMethod.substr(0, 10);
+
+		Json::Value data;
+		data.append(p);
+		data.append("latest");
+
+		Json::Value result = CallMethod("eth_call", data);
+		if (result.isString())
+		{
+			_challenge = fromHex(result.asString());
+		} else
+			throw jsonrpc::JsonRpcException(jsonrpc::Errors::ERROR_CLIENT_INVALID_RESPONSE, result.toStyledString());
+		LogF << "Trace: getWork, Challenge : " << toHex(_challenge);
+
+		// target
+		bMethod = sha3("getMiningTarget()");
+		sMethod = toHex(bMethod, dev::HexPrefix::Add);
+		p["data"] = sMethod.substr(0, 10);
+
+		data.clear();
+		data.append(p);
+		data.append("latest");
+
+		result = CallMethod("eth_call", data);
+		if (result.isString())
+		{
+			_target = h256(result.asString());
+		} else
+			throw jsonrpc::JsonRpcException(jsonrpc::Errors::ERROR_CLIENT_INVALID_RESPONSE, result.toStyledString());
+
 	}
 
 	void setChallenge(bytes& _challenge)
@@ -247,107 +313,6 @@ public:
 		}
 	}
 
-	Json::Value eth_getWork() throw (jsonrpc::JsonRpcException) {
-		Json::Value p;
-		p = Json::nullValue;
-		Json::Value result = CallMethod("eth_getWork", p);
-		if (result.isArray())
-			return result;
-		else
-			throw jsonrpc::JsonRpcException(jsonrpc::Errors::ERROR_CLIENT_INVALID_RESPONSE, result.toStyledString());
-	}
-
-	void eth_getWork_token(bytes& _challenge, h256& _target) throw (jsonrpc::JsonRpcException) {
-		// challenge
-		Json::Value p;
-		p["from"] = m_minerAcct;			// ETH address (Jaxx HD)
-		p["to"] = m_tokenContract;			// 0xbitcoin contract address
-
-		h256 bMethod = sha3("getChallengeNumber()");
-		std::string sMethod = toHex(bMethod, dev::HexPrefix::Add);
-		p["data"] = sMethod.substr(0, 10);
-
-		Json::Value data;
-		data.append(p);
-		data.append("latest");
-
-		Json::Value result = CallMethod("eth_call", data);
-		if (result.isString()) {
-			_challenge = fromHex(result.asString());
-		} else
-			throw jsonrpc::JsonRpcException(jsonrpc::Errors::ERROR_CLIENT_INVALID_RESPONSE, result.toStyledString());
-		LogF << "Trace: eth_getWork_token, Challenge : " << toHex(_challenge);
-
-		// target
-		bMethod = sha3("getMiningTarget()");
-		sMethod = toHex(bMethod, dev::HexPrefix::Add);
-		p["data"] = sMethod.substr(0, 10);
-
-		data.clear();
-		data.append(p);
-		data.append("latest");
-
-		result = CallMethod("eth_call", data);
-		if (result.isString()) {
-			_target = h256(result.asString());
-		} else
-			throw jsonrpc::JsonRpcException(jsonrpc::Errors::ERROR_CLIENT_INVALID_RESPONSE, result.toStyledString());
-
-	}
-
-	void eth_getLastBlockData() throw (jsonrpc::JsonRpcException) {
-		string lastRewardTo;
-		u256 lastRewardEthBlockNumber;
-
-		// lastRewardTo
-		Json::Value p;
-		p["from"] = m_minerAcct;			// ETH address (Jaxx HD)
-		p["to"] = m_tokenContract;			// 0xbitcoin contract address
-
-		h256 bMethod = sha3("lastRewardTo()");
-		std::string sMethod = toHex(bMethod, dev::HexPrefix::Add);
-		p["data"] = sMethod.substr(0, 10);
-
-		Json::Value data;
-		data.append(p);
-		data.append("latest");
-
-		Json::Value result = CallMethod("eth_call", data);
-		if (result.isString()) {
-			lastRewardTo = "0x" + result.asString().substr(26);
-		} else
-			throw jsonrpc::JsonRpcException(jsonrpc::Errors::ERROR_CLIENT_INVALID_RESPONSE, result.toStyledString());
-
-		// lastRewardEthBlockNumber
-		bMethod = sha3("lastRewardEthBlockNumber()");
-		sMethod = toHex(bMethod, dev::HexPrefix::Add);
-		p["data"] = sMethod.substr(0, 10);
-
-		data.clear();
-		data.append(p);
-		data.append("latest");
-
-		result = CallMethod("eth_call", data);
-		if (result.isString()) {
-			lastRewardEthBlockNumber = u256(result.asString());
-		} else
-			throw jsonrpc::JsonRpcException(jsonrpc::Errors::ERROR_CLIENT_INVALID_RESPONSE, result.toStyledString());
-
-		LogD << "Last reward to : " << lastRewardTo << ", block : " << lastRewardEthBlockNumber;
-	}
-
-
-	bool eth_submitWork(const std::string& param1, const std::string& param2, const std::string& param3) throw (jsonrpc::JsonRpcException) {
-		Json::Value p;
-		p.append(param1);
-		p.append(param2);
-		p.append(param3);
-		Json::Value result = CallMethod("eth_submitWork", p);
-		if (result.isBool())
-			return result.asBool();
-		else
-			throw jsonrpc::JsonRpcException(jsonrpc::Errors::ERROR_CLIENT_INVALID_RESPONSE, result.toStyledString());
-	}
 
 	TxStatus getTxStatus(string _txHash)
 	{
@@ -463,7 +428,7 @@ public:
 		t.txHash = result.asString();
 	}
 
-	bool eth_submitWorkToken(h256 _nonce, bytes _hash, bytes _challenge) throw (jsonrpc::JsonRpcException) {
+	bool submitWork(h256 _nonce, bytes _hash, bytes _challenge) throw (jsonrpc::JsonRpcException) {
 
 		try {
 			// check if any other miner in our farm already submitted a solution for this challenge
@@ -485,7 +450,7 @@ public:
 			ofs.close();
 		}
 		catch (const std::exception& e) {
-			LogB << "Exception: eth_submitWorkToken - " << e.what();
+			LogB << "Exception: submitWork - " << e.what();
 		}
 
 
@@ -529,37 +494,6 @@ public:
 		return true;
 	}
 
-
-	bool eth_submitHashrate(const std::string& param1, const std::string& param2) throw (jsonrpc::JsonRpcException) {
-		Json::Value p;
-		p.append(param1);
-		p.append(param2);
-		Json::Value result = CallMethod("eth_submitHashrate", p);
-		if (result.isBool())
-			return result.asBool();
-		else
-			throw jsonrpc::JsonRpcException(jsonrpc::Errors::ERROR_CLIENT_INVALID_RESPONSE, result.toStyledString());
-	}
-
-	Json::Value eth_awaitNewWork() throw (jsonrpc::JsonRpcException) {
-		Json::Value p;
-		p = Json::nullValue;
-		Json::Value result = CallMethod("eth_awaitNewWork", p);
-		if (result.isArray())
-			return result;
-		else
-			throw jsonrpc::JsonRpcException(jsonrpc::Errors::ERROR_CLIENT_INVALID_RESPONSE, result.toStyledString());
-	}
-
-	bool eth_progress() throw (jsonrpc::JsonRpcException) {
-		Json::Value p;
-		p = Json::nullValue;
-		Json::Value result = CallMethod("eth_progress", p);
-		if (result.isBool())
-			return result.asBool();
-		else
-			throw jsonrpc::JsonRpcException(jsonrpc::Errors::ERROR_CLIENT_INVALID_RESPONSE, result.toStyledString());
-	}
 
 	void testHash(h256 nonce, bytes challenge)  throw (jsonrpc::JsonRpcException) {
 		std::vector<byte> mix(84);
@@ -613,9 +547,27 @@ public:
 			throw jsonrpc::JsonRpcException(jsonrpc::Errors::ERROR_CLIENT_INVALID_RESPONSE, result.toStyledString());
 	}
 
+	/*-----------------------------------------------------------------------------------
+	* getBlockNumber
+	*----------------------------------------------------------------------------------*/
+	unsigned getBlockNumber()
+	{
+		try
+		{
+			Json::Value p;
+			Json::Value result = CallMethod("eth_blockNumber", p);
+			return jsToInt(result.asString());
+		}
+		catch (const std::exception& e)
+		{
+			LogB << "Exception in getBlockNumber - " << e.what();
+			return 0;
+		}
+	}
 
 
 private:
+	OperationMode m_opMode;
 	string m_minerAcct;
 	string m_acctPK;
 	string m_tokenContract;

@@ -83,14 +83,6 @@ class MinerCLI
 {
 public:
 
-	enum class OperationMode
-	{
-		None,
-		Benchmark,
-		Farm,
-		Stratum
-	};
-
 	typedef struct
 	{
 		string url;
@@ -184,32 +176,6 @@ public:
 		{
 			if (!parseNode(argv[i], argv[++i], m_nodes[1].url, m_nodes[1].rpcPort))
 				exit(-1);
-		}
-		else if ((arg == "-S" || arg == "--stratum-port") && i + 1 < argc)
-		{
-			m_nodes[0].stratumPort = argv[++i];
-			if (!isDigits(m_nodes[0].stratumPort))
-			{
-				LogS << "Invalid " << arg << " option: Numerical port number only!";
-				exit(-1);
-			}
-		}
-		else if ((arg == "-S2" || arg == "--stratum-port2") && i + 1 < argc)
-		{
-			m_nodes[1].stratumPort = argv[++i];
-			if (!isDigits(m_nodes[1].stratumPort))
-			{
-				LogS << "Invalid " << arg << " option: Numerical port number only!";
-				exit(-1);
-			}
-		}
-		else if ((arg == "-P" || arg == "--stratum-pwd") && i + 1 < argc)
-		{
-			m_nodes[0].stratumPwd = argv[++i];
-		}
-		else if ((arg == "-P2" || arg == "--stratum-pwd2") && i + 1 < argc)
-		{
-			m_nodes[1].stratumPwd = argv[++i];
 		}
 		else if ((arg == "-I" || arg == "--polling-interval") && i + 1 < argc)
 			try {
@@ -376,6 +342,10 @@ public:
 			m_minerType = MinerType::CPU;
 		else if (arg == "-G" || arg == "--opencl")
 			m_minerType = MinerType::CL;
+		else if (arg == "-P" || arg == "--opencl")
+			m_opMode = OperationMode::Pool;
+		else if (arg == "-S" || arg == "--opencl")
+			m_opMode = OperationMode::Solo;
 		else if (arg == "-U" || arg == "--cuda")
 		{
 			m_minerType = MinerType::CUDA;
@@ -443,6 +413,11 @@ public:
 		if (m_minerType == MinerType::Undefined)
 		{
 			LogS << "No miner type specfied.  Please include either -C (CPU mining) or -G (OpenCL mining) on the command line";
+			exit(-1);
+		}
+		if (m_opMode == OperationMode::None)
+		{
+			LogS << "Operation mode not specfied.  Please include either -S (solo mining) or -P (pool mining) on the command line";
 			exit(-1);
 		}
 		LogD << " ";
@@ -530,7 +505,6 @@ public:
 		{
 			GenericFarm<EthashProofOfWork> f;
 			f.start(createMiners(m_minerType, &f));
-			mvisRPC = new MVisRPC(f);
 
 			int i = 0;
 			while (true)
@@ -557,7 +531,7 @@ public:
 	{
 		_out
 			<< " Node configuration:" << endl
-			<< "    -N, --node <host:rpc_port>  Host address and RPC port of your node. (default: 127.0.0.1:8545)" << endl
+			<< "    -N, --node <host:rpc_port>  Host address and RPC port of your node/mining pool. (default: 127.0.0.1:8545)" << endl
 			<< "    -I, --polling-interval <n>  Check for new work every <n> milliseconds (default: 200). " << endl
 			<< endl
 			<< " Benchmarking mode:" << endl
@@ -568,6 +542,8 @@ public:
 			<< "    --benchmark-trials <n>  Set the number of benchmark tests (default: 5)." << endl
 			<< endl
 			<< " Mining configuration:" << endl
+			<< "    -P  Pool mining" << endl
+			<< "    -S  Solo mining" << endl
 			<< "    -C,--cpu  CPU mining" << endl
 			<< "    -G,--opencl  When mining use the GPU via OpenCL." << endl
 			<< "    --cl-local-work <n> Set the OpenCL local work size. Default is " << toString(ethash_cl_miner::c_defaultLocalWorkSize) << endl
@@ -726,19 +702,26 @@ private:
 		unsigned farmRetries = 0;
 		int maxRetries = failOverAvailable() ? m_maxFarmRetries : c_StopWorkAt;
 		bool connectedToNode = false;
-		string gasPriceBidding = ProgOpt::Get("0xBitcoin", "GasPriceBidding", "0");
+		bool gasPriceBidding = ProgOpt::Get("0xBitcoin", "GasPriceBidding", "0") == "1" && m_opMode == OperationMode::Solo;
 
-		LogS << "Connecting to node at " << _nodeURL + ":" + _rpcPort << " ...";
+		LogS << "Connecting to " << _nodeURL + ":" + _rpcPort << " ...";
+
 		jsonrpc::HttpClient client(_nodeURL + ":" + _rpcPort);
-		::FarmClient rpc(client);
-		mvisRPC->configNodeRPC(_nodeURL + ":" + _rpcPort);
+		FarmClient poolRpc(client, m_opMode);
+		FarmClient* nodeRPc = &poolRpc;
+		if (m_opMode == OperationMode::Pool)
+		{
+			jsonrpc::HttpClient nodeClient("https://mainnet.infura.io/J9KBwsJ0q1LMIQvzDlGC:8545");
+			nodeRPc = new FarmClient(nodeClient, OperationMode::Solo);
+		}
 
 		EthashProofOfWork::WorkPackage current, previous;
 		h256 target;
 		bytes challenge;
 		deque<bytes> recentChallenges;
 
-		int tokenBalance = rpc.tokenBalance();
+		int tokenBalance = nodeRPc->tokenBalance();
+
 
 		while (!m_shutdown)
 		{
@@ -762,7 +745,7 @@ private:
 							int blkNum = 0;
 							try
 							{
-								blkNum = mvisRPC->getBlockNumber() + 1;
+								blkNum = nodeRPc->getBlockNumber() + 1;
 							}
 							catch (...) {}
 							if (blkNum != 0 && blkNum != f.currentBlock)
@@ -776,7 +759,7 @@ private:
 					}
 					if (lastBalanceCheck.elapsedSeconds() >= 10)
 					{
-						tokenBalance = rpc.tokenBalance();
+						tokenBalance = nodeRPc->tokenBalance();
 						lastBalanceCheck.restart();
 					}
 
@@ -784,7 +767,7 @@ private:
 					bytes _challenge;
 					if (lastGetWork.elapsedMilliseconds() > m_pollingInterval || !connectedToNode)
 					{
-						rpc.eth_getWork_token(_challenge, _target);
+						poolRpc.getWork(_challenge, _target);
 						lastGetWork.restart();
 
 						if (!connectedToNode)
@@ -816,7 +799,7 @@ private:
 
 								LogB << "New challenge : " << toHex(_challenge).substr(0, 8);
 								f.setWork_token(challenge, target);
-								rpc.setChallenge(challenge);
+								poolRpc.setChallenge(challenge);
 
 							}
 						}
@@ -824,9 +807,9 @@ private:
 
 					if (lastCheckTx.elapsedMilliseconds() > 1000)
 					{
-						rpc.checkPendingTransactions();
-						if (gasPriceBidding == "1")
-							rpc.txpoolScanner();
+						nodeRPc->checkPendingTransactions();
+						if (gasPriceBidding)
+							nodeRPc->txpoolScanner();
 						lastCheckTx.restart();
 					}
 
@@ -841,7 +824,7 @@ private:
 				keccak256_0xBitcoin(challenge, sender, solution, hash);
 				if (h256(hash) < target) {
 					LogB << "Solution found; Submitting to node ...";
-					bool ok = rpc.eth_submitWorkToken(solution, hash, challenge);
+					bool ok = poolRpc.submitWork(solution, hash, challenge);
 					f.solutionFound(SolutionState::Accepted, false, solutionMiner);
 				} else {
 					LogB << "Solution found, but invalid.  Possibly stale.";
@@ -873,8 +856,7 @@ private:
 			}
 		}
 
-		mvisRPC->disconnect("notify");
-		rpc.closeTxFilter();
+		nodeRPc->closeTxFilter();
 
 	}	// doFarm
 
@@ -919,6 +901,7 @@ private:
 
 	/// Mining options
 	MinerType m_minerType = MinerType::Undefined;
+	OperationMode m_opMode = OperationMode::None;
 	unsigned m_openclPlatform = 0;
 	unsigned m_openclDevice = 0;
 	unsigned m_miningThreads = UINT_MAX;
