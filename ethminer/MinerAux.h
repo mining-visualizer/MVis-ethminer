@@ -679,12 +679,21 @@ private:
 	/*-----------------------------------------------------------------------------------
 	* positionedOutput
 	*----------------------------------------------------------------------------------*/
-	void positionedOutput(GenericFarm<EthashProofOfWork> &f, Timer lastBlockTime, uint64_t tokenBalance)
+	void positionedOutput(OperationMode _opMode, GenericFarm<EthashProofOfWork> &f, Timer lastBlockTime, uint64_t tokenBalance, 
+						  u256 _difficulty, h256 _target)
 	{
 		f.hashRates().update();
 		LogXY(1, 1) << "Rates:" << f.hashRates() << " | Temp: " << f.getMinerTemps() << " | Fan: " << f.getFanSpeeds() << "         ";
-		LogXY(1, 2) << "Block #: " << f.currentBlock << " | Block time: " << elapsedSeconds(lastBlockTime)
-			<< " | Solutions: " << f.getSolutionStats().getAccepts() << " | Tokens: " << tokenBalance;
+		if (_opMode == OperationMode::Solo)
+		{
+			LogXY(1, 2) << "Block #: " << f.currentBlock << " | Block time: " << elapsedSeconds(lastBlockTime)
+						<< " | Solutions: " << f.getSolutionStats().getAccepts() << " | Tokens: " << tokenBalance;
+		} 
+		else
+		{
+			LogXY(1, 2) << "Difficulty: " << _difficulty << " | Target: " << upper64OfHash(_target) << " | Solutions: " 
+						<< f.getSolutionStats().getAccepts() << " | Tokens: " << tokenBalance;
+		}
 	}
 
 
@@ -706,21 +715,27 @@ private:
 
 		LogS << "Connecting to " << _nodeURL + ":" + _rpcPort << " ...";
 
+		// if solo mining, both workRPC and nodeRPC point to the mainNet node (whatever the user specifies)
+		// if pool mining, workRPC points to the mining pool, and nodeRPC points to Infura
+
 		jsonrpc::HttpClient client(_nodeURL + ":" + _rpcPort);
-		FarmClient poolRpc(client, m_opMode);
-		FarmClient* nodeRPc = &poolRpc;
+		FarmClient workRPC(client, m_opMode);
+
+		jsonrpc::HttpClient* nodeClient;
+		FarmClient* nodeRPC = &workRPC;
 		if (m_opMode == OperationMode::Pool)
 		{
-			jsonrpc::HttpClient nodeClient("https://mainnet.infura.io/J9KBwsJ0q1LMIQvzDlGC:8545");
-			nodeRPc = new FarmClient(nodeClient, OperationMode::Solo);
+			nodeClient = new jsonrpc::HttpClient("https://mainnet.infura.io/J9KBwsJ0q1LMIQvzDlGC:8545");
+			nodeRPC = new FarmClient(*nodeClient, OperationMode::Solo);
 		}
 
 		EthashProofOfWork::WorkPackage current, previous;
 		h256 target;
 		bytes challenge;
 		deque<bytes> recentChallenges;
+		u256 difficulty;
 
-		int tokenBalance = nodeRPc->tokenBalance();
+		int tokenBalance = nodeRPC->tokenBalance();
 
 
 		while (!m_shutdown)
@@ -733,7 +748,8 @@ private:
 				f.onSolutionFoundToken([&] (h256 nonce, int miner) {
 					solution = nonce;
 					solutionMiner = miner;
-					return solutionFound = true;
+					solutionFound = true;
+					return m_opMode == OperationMode::Solo;
 				});
 
 				while (!solutionFound && !f.shutDown)
@@ -745,7 +761,7 @@ private:
 							int blkNum = 0;
 							try
 							{
-								blkNum = nodeRPc->getBlockNumber() + 1;
+								blkNum = nodeRPC->getBlockNumber() + 1;
 							}
 							catch (...) {}
 							if (blkNum != 0 && blkNum != f.currentBlock)
@@ -753,13 +769,13 @@ private:
 								f.currentBlock = blkNum;
 								lastBlockTime.restart();
 							}
-							positionedOutput(f, lastBlockTime, tokenBalance);
+							positionedOutput(m_opMode, f, lastBlockTime, tokenBalance, difficulty, target);
 							lastHashRateDisplay.restart();
 						}
 					}
 					if (lastBalanceCheck.elapsedSeconds() >= 10)
 					{
-						tokenBalance = nodeRPc->tokenBalance();
+						tokenBalance = nodeRPC->tokenBalance();
 						lastBalanceCheck.restart();
 					}
 
@@ -767,7 +783,7 @@ private:
 					bytes _challenge;
 					if (lastGetWork.elapsedMilliseconds() > m_pollingInterval || !connectedToNode)
 					{
-						poolRpc.getWork(_challenge, _target);
+						workRPC.getWork(_challenge, _target, difficulty);
 						lastGetWork.restart();
 
 						if (!connectedToNode)
@@ -780,7 +796,7 @@ private:
 						if (_challenge != challenge)
 						{
 							// when queried for the most recent challenge, infura nodes will occasionally respond 
-							// with the one previous.
+							// with the previous one.
 							bool seenBefore = false;
 							for (bytes c : recentChallenges)
 							{
@@ -799,7 +815,7 @@ private:
 
 								LogB << "New challenge : " << toHex(_challenge).substr(0, 8);
 								f.setWork_token(challenge, target);
-								poolRpc.setChallenge(challenge);
+								workRPC.setChallenge(challenge);
 
 							}
 						}
@@ -807,9 +823,9 @@ private:
 
 					if (lastCheckTx.elapsedMilliseconds() > 1000)
 					{
-						nodeRPc->checkPendingTransactions();
+						nodeRPC->checkPendingTransactions();
 						if (gasPriceBidding)
-							nodeRPc->txpoolScanner();
+							nodeRPC->txpoolScanner();
 						lastCheckTx.restart();
 					}
 
@@ -824,7 +840,7 @@ private:
 				keccak256_0xBitcoin(challenge, sender, solution, hash);
 				if (h256(hash) < target) {
 					LogB << "Solution found; Submitting to node ...";
-					bool ok = poolRpc.submitWork(solution, hash, challenge);
+					workRPC.submitWork(solution, hash, challenge);
 					f.solutionFound(SolutionState::Accepted, false, solutionMiner);
 				} else {
 					LogB << "Solution found, but invalid.  Possibly stale.";
@@ -856,7 +872,7 @@ private:
 			}
 		}
 
-		nodeRPc->closeTxFilter();
+		nodeRPC->closeTxFilter();
 
 	}	// doFarm
 
@@ -883,7 +899,7 @@ private:
 		{
 			if (lastHashRateDisplay.elapsedSeconds() >= 2.0 && client.isConnected() && f.isMining())
 			{
-				positionedOutput(f, lastBlockTime, 0);
+				//positionedOutput(f, lastBlockTime, 0);
 				lastHashRateDisplay.restart();
 			}
 			this_thread::sleep_for(chrono::milliseconds(200));

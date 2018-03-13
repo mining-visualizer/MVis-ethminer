@@ -61,24 +61,28 @@ public:
 		}
 	}
 
-	void getWork(bytes& _challenge, h256& _target)
+	void getWork(bytes& _challenge, h256& _target, u256& _difficulty)
 	{
 		if (m_opMode == OperationMode::Solo)
-			getWorkNode(_challenge, _target);
+			getWorkSolo(_challenge, _target, _difficulty);
 		else
-			getWorkPool(_challenge, _target);
+			getWorkPool(_challenge, _target, _difficulty);
 	}
 
-	void getWorkPool(bytes& _challenge, h256& _target)
+	void getWorkPool(bytes& _challenge, h256& _target, u256& _difficulty)
 	{
 		Json::Value data;
 		Json::Value result = CallMethod("getChallengeNumber", data);
 		_challenge = fromHex(result.asString());
+		data.append(m_minerAcct);
 		result = CallMethod("getMinimumShareTarget", data);
-		_target = h256(result.asString());
+		_target = u256(result.asString());
+		result = CallMethod("getMinimumShareDifficulty", data);
+		m_difficulty = u256(result.asString());
+		_difficulty = m_difficulty;
 	}
 
-	void getWorkNode(bytes& _challenge, h256& _target) throw (jsonrpc::JsonRpcException)
+	void getWorkSolo(bytes& _challenge, h256& _target, u256& _difficulty) throw (jsonrpc::JsonRpcException)
 	{
 		// challenge
 		Json::Value p;
@@ -117,6 +121,99 @@ public:
 		} else
 			throw jsonrpc::JsonRpcException(jsonrpc::Errors::ERROR_CLIENT_INVALID_RESPONSE, result.toStyledString());
 
+	}
+
+	void submitWork(h256 _nonce, bytes _hash, bytes _challenge)
+	{
+		if (m_opMode == OperationMode::Solo)
+			submitWorkSolo(_nonce, _hash, _challenge);
+		else
+			submitWorkPool(_nonce, _hash, _challenge);
+	}
+
+	void submitWorkPool(h256 _nonce, bytes _hash, bytes _challenge)
+	{
+		Json::Value data;
+		data.append(_nonce.hex());
+		data.append(m_minerAcct);
+		data.append(toHex(_hash));
+		data.append(toHex(m_difficulty));
+		data.append(toHex(_challenge));
+		Json::Value result = CallMethod("submitShare", data);
+		if (!result.asBool())
+			LogB << "Solution was rejected!";
+	}
+
+	void submitWorkSolo(h256 _nonce, bytes _hash, bytes _challenge)
+	{
+
+		try
+		{
+			// check if any other miner in our farm already submitted a solution for this challenge
+			boost::filesystem::path m_challengeFilename = boost::filesystem::path(ProgOpt::Get("0xBitcoin", "ChallengeFolder")) / "challenge.txt";
+			ifstream ifs;
+			if (boost::filesystem::exists(m_challengeFilename))
+			{
+				string s;
+				ifs.open(m_challengeFilename.generic_string(), fstream::in);
+				getlineEx(ifs, s);
+				if (s == toHex(_challenge))
+				{
+					LogS << "Another miner in the local farm already got this one : " << toHex(_challenge).substr(0, 8);
+					return;
+				}
+			}
+			ifs.close();
+			// write this challenge value to our synchronization file.
+			std::ofstream ofs(m_challengeFilename.generic_string(), std::ofstream::out);
+			ofs << toHex(_challenge);
+			ofs.close();
+		}
+		catch (const std::exception& e)
+		{
+			LogB << "Exception: submitWork - " << e.what();
+		}
+
+
+		// prepare transaction
+		Transaction t;
+		if (m_lastSolution.elapsedSeconds() > 5 * 60 || m_txNonce == -1)
+		{
+			m_txNonce = getNextNonce();
+		} else
+		{
+			m_txNonce++;
+		}
+		m_lastSolution.restart();
+		t.nonce = m_txNonce;
+		t.receiveAddress = toAddress(m_tokenContract);
+		t.gas = u256(130000);
+		ProgOpt::Load("");
+		m_startGas = atoi(ProgOpt::Get("0xBitcoin", "GasPrice").c_str());
+		m_maxGas = atoi(ProgOpt::Get("0xBitcoin", "MaxGasPrice").c_str());
+		t.gasPrice = RecommendedGasPrice(_challenge);
+
+		// compute data parameter : first 4 bytes is hash of function signature
+		h256 bMethod = sha3("mint(uint256,bytes32)");
+		std::string sMethod = toHex(bMethod, dev::HexPrefix::Add);
+		sMethod = sMethod.substr(0, 10);
+		// put the nonce in
+		stringstream ss;
+		ss << std::setw(64) << std::setfill('0') << _nonce.hex();
+		std::string s2(ss.str());
+		sMethod = sMethod + s2;
+		// and the hash
+		ss = std::stringstream();
+		ss << std::left << std::setw(64) << std::setfill('0') << toHex(_hash);
+		s2 = std::string(ss.str());
+		sMethod = sMethod + s2;
+		t.data = fromHex(sMethod);
+		t.value = 0;
+		t.challenge = _challenge;
+
+		txSignSend(t);
+		LogB << "Tx hash : " << t.txHash << ", gasPrice : " << t.gasPrice / 1000000000;
+		m_pendingTxs.push_back(t);
 	}
 
 	void setChallenge(bytes& _challenge)
@@ -428,71 +525,6 @@ public:
 		t.txHash = result.asString();
 	}
 
-	bool submitWork(h256 _nonce, bytes _hash, bytes _challenge) throw (jsonrpc::JsonRpcException) {
-
-		try {
-			// check if any other miner in our farm already submitted a solution for this challenge
-			boost::filesystem::path m_challengeFilename = boost::filesystem::path(ProgOpt::Get("0xBitcoin", "ChallengeFolder")) / "challenge.txt";
-			ifstream ifs;
-			if (boost::filesystem::exists(m_challengeFilename)) {
-				string s;
-				ifs.open(m_challengeFilename.generic_string(), fstream::in);
-				getlineEx(ifs, s);
-				if (s == toHex(_challenge)) {
-					LogS << "Another miner in the local farm already got this one : " << toHex(_challenge).substr(0, 8);
-					return false;
-				}
-			}
-			ifs.close();
-			// write this challenge value to our synchronization file.
-			std::ofstream ofs(m_challengeFilename.generic_string(), std::ofstream::out);
-			ofs << toHex(_challenge);
-			ofs.close();
-		}
-		catch (const std::exception& e) {
-			LogB << "Exception: submitWork - " << e.what();
-		}
-
-
-		// prepare transaction
-		Transaction t;
-		if (m_lastSolution.elapsedSeconds() > 5 * 60 || m_txNonce == -1) {
-			m_txNonce = getNextNonce();
-		} else {
-			m_txNonce++;
-		}
-		m_lastSolution.restart();
-		t.nonce = m_txNonce;
-		t.receiveAddress = toAddress(m_tokenContract);
-		t.gas = u256(130000);
-		ProgOpt::Load("");
-		m_startGas = atoi(ProgOpt::Get("0xBitcoin", "GasPrice").c_str());
-		m_maxGas = atoi(ProgOpt::Get("0xBitcoin", "MaxGasPrice").c_str());
-		t.gasPrice = RecommendedGasPrice(_challenge);
-
-		// compute data parameter : first 4 bytes is hash of function signature
-		h256 bMethod = sha3("mint(uint256,bytes32)");
-		std::string sMethod = toHex(bMethod, dev::HexPrefix::Add);
-		sMethod = sMethod.substr(0, 10);
-		// put the nonce in
-		stringstream ss;
-		ss << std::setw(64) << std::setfill('0') << _nonce.hex();
-		std::string s2(ss.str());
-		sMethod = sMethod + s2;
-		// and the hash
-		ss = std::stringstream();
-		ss << std::left << std::setw(64) << std::setfill('0') << toHex(_hash);
-		s2 = std::string(ss.str());
-		sMethod = sMethod + s2;
-		t.data = fromHex(sMethod);
-		t.value = 0;
-		t.challenge = _challenge;
-
-		txSignSend(t);
-		LogB << "Tx hash : " << t.txHash << ", gasPrice : " << t.gasPrice / 1000000000;
-		m_pendingTxs.push_back(t);
-		return true;
-	}
 
 
 	void testHash(h256 nonce, bytes challenge)  throw (jsonrpc::JsonRpcException) {
@@ -580,6 +612,7 @@ private:
 	int m_startGas;
 	int m_maxGas;
 	int m_bidTop;
+	u256 m_difficulty;
 
 };
 
