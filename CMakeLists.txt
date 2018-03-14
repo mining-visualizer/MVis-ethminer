@@ -5,9 +5,9 @@ set(PROJECT_VERSION "2.0.0")
 if (${CMAKE_VERSION} VERSION_GREATER 3.0)
 	cmake_policy(SET CMP0042 OLD) 	# fix MACOSX_RPATH
 	cmake_policy(SET CMP0048 NEW) 	# allow VERSION argument in project()
-	project(MVis-ethminer VERSION ${PROJECT_VERSION})
+	project(MVis-tokenminer VERSION ${PROJECT_VERSION})
 else()
-	project(MVis-ethminer)
+	project(MVis-tokenminer)
 endif()
 
 set(CMAKE_AUTOMOC ON)

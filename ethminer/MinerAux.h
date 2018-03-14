@@ -532,7 +532,7 @@ public:
 		_out
 			<< " Node configuration:" << endl
 			<< "    -N, --node <host:rpc_port>  Host address and RPC port of your node/mining pool. (default: 127.0.0.1:8545)" << endl
-			<< "    -I, --polling-interval <n>  Check for new work every <n> milliseconds (default: 200). " << endl
+			<< "    -I, --polling-interval <n>  Check for new work every <n> milliseconds (default: 2000). " << endl
 			<< endl
 			<< " Benchmarking mode:" << endl
 			<< "    -M [<n>],--benchmark [<n>] Benchmark for mining and exit; Optionally specify block number to benchmark" << endl
@@ -558,8 +558,8 @@ public:
 			<< "    --cl-extragpu-mem <n> Set the memory (in MB) you believe your GPU requires for stuff other than mining. default: 0" << endl
 			<< endl
 			<< " Miscellaneous Options:" << endl
-			<< "    --config <FileSpec>  - Full path to an INI file containing program options. Windows default: %LocalAppData%/ethminer/ethminer.ini " << endl
-			<< "                           Linux default: $HOME/.config/ethminer/ethminer.ini.  If this option is specified,  it must appear before " << endl
+			<< "    --config <FileSpec>  - Full path to an INI file containing program options. Windows default: %LocalAppData%/tokenminer/tokenminer.ini " << endl
+			<< "                           Linux default: $HOME/.config/tokenminer/tokenminer.ini.  If this option is specified,  it must appear before " << endl
 			<< "                           all others." << endl
 			;
 	}	// streamHelp
@@ -706,6 +706,10 @@ private:
 		Timer lastBalanceCheck;
 		Timer lastGetWork;
 		Timer lastCheckTx;
+
+		int devMining;
+		string sDevPercent = ProgOpt::Get("General", "DevFee", "2.0");
+		sDevPercent = ProgOpt::Get("", "DevFee", "2.0");
 
 		unsigned farmRetries = 0;
 		int maxRetries = failOverAvailable() ? m_maxFarmRetries : c_StopWorkAt;
@@ -958,7 +962,7 @@ private:
 	std::vector<node_t> m_nodes;
 
 	unsigned m_maxFarmRetries = 4;
-	unsigned m_pollingInterval = 1000;
+	unsigned m_pollingInterval = 2000;
 	unsigned m_worktimeout = 180;
 	bool m_shutdown = false;
 };
