@@ -691,8 +691,7 @@ private:
 		} 
 		else
 		{
-			LogXY(1, 2) << "Difficulty: " << _difficulty << " | Target: " << upper64OfHash(_target) << " | Solutions: " 
-						<< f.getSolutionStats().getAccepts() << " | Tokens: " << tokenBalance;
+			LogXY(1, 2) << "Difficulty: " << _difficulty << " | Shares: " << f.getSolutionStats().getAccepts() << " | Tokens: " << tokenBalance;
 		}
 	}
 
@@ -736,7 +735,6 @@ private:
 		u256 difficulty;
 
 		int tokenBalance = nodeRPC->tokenBalance();
-
 
 		while (!m_shutdown)
 		{
@@ -783,7 +781,10 @@ private:
 					bytes _challenge;
 					if (lastGetWork.elapsedMilliseconds() > m_pollingInterval || !connectedToNode)
 					{
-						workRPC.getWork(_challenge, _target, difficulty);
+						if (m_opMode == OperationMode::Pool)
+							workRPC.getWorkPool(_challenge, _target, difficulty, f.hashingAcct);
+						else
+							workRPC.getWorkSolo(_challenge, _target);
 						lastGetWork.restart();
 
 						if (!connectedToNode)
@@ -813,7 +814,7 @@ private:
 								//target = h256(0x0000000080000000);	// easy target for testing
 								//target = (u256) target << 192;
 
-								LogB << "New challenge : " << toHex(_challenge).substr(0, 8);
+								LogS << "New challenge : " << toHex(_challenge).substr(0, 8);
 								f.setWork_token(challenge, target);
 								workRPC.setChallenge(challenge);
 
@@ -836,10 +837,11 @@ private:
 					break;
 
 				bytes hash(32);
-				h160 sender(f.minerAcct);
+				h160 sender(f.hashingAcct);
 				keccak256_0xBitcoin(challenge, sender, solution, hash);
 				if (h256(hash) < target) {
-					LogB << "Solution found; Submitting to node ...";
+					string dest = m_opMode == OperationMode::Pool ? "pool ..." : "node ...";
+					LogB << "Solution found; Submitting to " << dest;
 					workRPC.submitWork(solution, hash, challenge);
 					f.solutionFound(SolutionState::Accepted, false, solutionMiner);
 				} else {

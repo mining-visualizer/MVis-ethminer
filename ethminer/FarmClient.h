@@ -49,11 +49,11 @@ public:
 	) : jsonrpc::Client(conn, type)
 	{
 		m_opMode = _opMode;
-		m_minerAcct = ProgOpt::Get("0xBitcoin", "MinerAcct");
+		m_userAcct = ProgOpt::Get("0xBitcoin", "MinerAcct");
 		if (_opMode == OperationMode::Solo)
 		{
 			m_tokenContract = ProgOpt::Get("0xBitcoin", "TokenContract");
-			m_acctPK = ProgOpt::Get("0xBitcoin", "AcctPK");
+			m_userAcctPK = ProgOpt::Get("0xBitcoin", "AcctPK");
 			m_bidTop = 2;
 			string s = ProgOpt::Get("0xBitcoin", "BidTop", "2");
 			if (isDigits(s))
@@ -61,20 +61,15 @@ public:
 		}
 	}
 
-	void getWork(bytes& _challenge, h256& _target, u256& _difficulty)
-	{
-		if (m_opMode == OperationMode::Solo)
-			getWorkSolo(_challenge, _target, _difficulty);
-		else
-			getWorkPool(_challenge, _target, _difficulty);
-	}
-
-	void getWorkPool(bytes& _challenge, h256& _target, u256& _difficulty)
+	void getWorkPool(bytes& _challenge, h256& _target, u256& _difficulty, string& _hashingAcct)
 	{
 		Json::Value data;
-		Json::Value result = CallMethod("getChallengeNumber", data);
+		Json::Value result;
+		result = CallMethod("getPoolEthAddress", data);
+		_hashingAcct = result.asString();
+		result = CallMethod("getChallengeNumber", data);
 		_challenge = fromHex(result.asString());
-		data.append(m_minerAcct);
+		data.append(m_userAcct);
 		result = CallMethod("getMinimumShareTarget", data);
 		_target = u256(result.asString());
 		result = CallMethod("getMinimumShareDifficulty", data);
@@ -82,12 +77,12 @@ public:
 		_difficulty = m_difficulty;
 	}
 
-	void getWorkSolo(bytes& _challenge, h256& _target, u256& _difficulty) throw (jsonrpc::JsonRpcException)
+	void getWorkSolo(bytes& _challenge, h256& _target) throw (jsonrpc::JsonRpcException)
 	{
 		// challenge
 		Json::Value p;
-		p["from"] = m_minerAcct;			// ETH address (Jaxx HD)
-		p["to"] = m_tokenContract;			// 0xbitcoin contract address
+		p["from"] = m_userAcct;			
+		p["to"] = m_tokenContract;		
 
 		h256 bMethod = sha3("getChallengeNumber()");
 		std::string sMethod = toHex(bMethod, dev::HexPrefix::Add);
@@ -118,7 +113,8 @@ public:
 		if (result.isString())
 		{
 			_target = h256(result.asString());
-		} else
+		} 
+		else
 			throw jsonrpc::JsonRpcException(jsonrpc::Errors::ERROR_CLIENT_INVALID_RESPONSE, result.toStyledString());
 
 	}
@@ -133,15 +129,18 @@ public:
 
 	void submitWorkPool(h256 _nonce, bytes _hash, bytes _challenge)
 	{
+
 		Json::Value data;
-		data.append(_nonce.hex());
-		data.append(m_minerAcct);
-		data.append(toHex(_hash));
-		data.append(toHex(m_difficulty));
-		data.append(toHex(_challenge));
+		data.append("0x" + _nonce.hex());
+		data.append(m_userAcct);
+		data.append("0x" + toHex(_hash));
+		uint64_t diff = static_cast<uint64_t>(m_difficulty);
+		data.append(diff);
+		data.append("0x" + toHex(_challenge));
 		Json::Value result = CallMethod("submitShare", data);
-		if (!result.asBool())
-			LogB << "Solution was rejected!";
+		string res = result.asString();
+		if (!result.isBool() || !result.asBool())
+			LogB << "Solution was rejected by the pool!";
 	}
 
 	void submitWorkSolo(h256 _nonce, bytes _hash, bytes _challenge)
@@ -371,7 +370,7 @@ public:
 	int getNextNonce() {
 		// get transaction count for nonce
 		Json::Value p;
-		p.append(m_minerAcct);
+		p.append(m_userAcct);
 		p.append("latest");
 		Json::Value result = CallMethod("eth_getTransactionCount", p);
 		return HexToInt(result.asString());
@@ -379,8 +378,8 @@ public:
 
 	uint64_t tokenBalance() {
 		Json::Value p;
-		p["from"] = m_minerAcct;			// ETH address (Jaxx HD)
-		p["to"] = m_tokenContract;			// 0xbitcoin contract address
+		p["from"] = m_userAcct;			
+		p["to"] = m_tokenContract;			
 
 		h256 bMethod = sha3("balanceOf(address)");
 		std::string sMethod = toHex(bMethod, dev::HexPrefix::Add);
@@ -388,7 +387,7 @@ public:
 
 		// address
 		stringstream ss;
-		ss << std::setw(64) << std::setfill('0') << m_minerAcct.substr(2);
+		ss << std::setw(64) << std::setfill('0') << m_userAcct.substr(2);
 		std::string s2(ss.str());
 		sMethod = sMethod + s2;
 		p["data"] = sMethod;
@@ -513,7 +512,7 @@ public:
 	void txSignSend(Transaction &t)
 	{
 		stringstream ss;
-		Secret pk = Secret(m_acctPK);
+		Secret pk = Secret(m_userAcctPK);
 		t.sign(pk);
 		ss = std::stringstream();
 		ss << "0x" << toHex(t.rlp());
@@ -527,28 +526,28 @@ public:
 
 
 
-	void testHash(h256 nonce, bytes challenge)  throw (jsonrpc::JsonRpcException) {
+	void testHash(bytes _challenge, string _sender, h256 _nonce)  throw (jsonrpc::JsonRpcException) {
 		std::vector<byte> mix(84);
 		std::ostringstream ss;
 		Json::Value p;
-		p["from"] = m_minerAcct;        // ETH address (Jaxx HD)
+		p["from"] = _sender;        
 		p["to"] = m_tokenContract;        // 0xbitcoin contract address
 
-										  // function signature
+		// function signature
 		h256 bMethod = sha3("getMintDigest(uint256,bytes32,bytes32)");
 		std::string sMethod = toHex(bMethod, dev::HexPrefix::Add);
 		sMethod = sMethod.substr(0, 10);
 
 		// nonce
-		ss << std::setw(64) << std::setfill('0') << nonce.hex();
+		ss << std::setw(64) << std::setfill('0') << _nonce.hex();
 		std::string s2(ss.str());
 		sMethod = sMethod + s2;
-		memcpy(&mix[52], nonce.data(), 32);
+		memcpy(&mix[52], _nonce.data(), 32);
 
 		// challenge_digest. this is actually an unused parameter in the contract, so we
 		// just send in the challenge_number twice.
 		ss = std::ostringstream();
-		ss << std::left << std::setw(64) << std::setfill('0') << toHex(challenge);
+		ss << std::left << std::setw(64) << std::setfill('0') << toHex(_challenge);
 		s2 = std::string(ss.str());
 		sMethod = sMethod + s2;
 
@@ -565,11 +564,11 @@ public:
 		if (result.isString()) {
 			LogS << "test hash";
 			LogS << result.asString();
-			h160 sender(m_tokenContract);
-			memcpy(&mix[0], challenge.data(), 32);
+			h160 sender(_sender);
+			memcpy(&mix[0], _challenge.data(), 32);
 			memcpy(&mix[32], sender.data(), 20);
 			bytes hash(32);
-			keccak256_0xBitcoin(challenge, sender, nonce, hash);
+			keccak256_0xBitcoin(_challenge, sender, _nonce, hash);
 			LogS << "0x" << toHex(hash);
 			SHA3_256((const ethash_h256_t*) hash.data(), (const uint8_t*) mix.data(), 84);
 			LogS << "0x" << toHex(hash);
@@ -600,8 +599,8 @@ public:
 
 private:
 	OperationMode m_opMode;
-	string m_minerAcct;
-	string m_acctPK;
+	string m_userAcct;
+	string m_userAcctPK;
 	string m_tokenContract;
 	int m_txNonce = -1;
 	Timer m_lastSolution;

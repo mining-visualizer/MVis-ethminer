@@ -138,7 +138,7 @@ bool EthashGPUMiner::report(h256 _nonce)
 {
 	// verify the solution
 	LogF << "Trace: EthashGPUMiner::report, challenge = " << toHex(challenge).substr(0, 8) << ", miner[" << m_index << "]";
-	h160 sender(m_farm->minerAcct);
+	h160 sender(m_farm->hashingAcct);
 	bytes hash(32);
 	keccak256_0xBitcoin(challenge, sender, _nonce, hash);
 	if (h256(hash) < target)
@@ -175,7 +175,7 @@ void EthashGPUMiner::workLoop()
 			m_miner = new ethash_cl_miner(this);
 			m_device = s_devices[index()] > -1 ? s_devices[index()] : index();
 
-			if (!m_miner->init(s_platformId, m_device, h160(m_farm->minerAcct)))
+			if (!m_miner->init(s_platformId, m_device, h160(m_farm->hashingAcct)))
 				throw cl::Error(-1, "cl_miner.init failed!");
 
 			s_dagLoadIndex++;
