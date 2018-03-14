@@ -80,6 +80,14 @@ enum class MinerType
 	Mixed
 };
 
+enum class OperationMode
+{
+	None,
+	Benchmark,
+	Solo,
+	Pool
+};
+
 enum SolutionState
 {
 	Accepted = 1,

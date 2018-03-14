@@ -88,7 +88,7 @@ void help()
 {
 	cout
 		<< endl
-		<< " Usage: ethminer [OPTIONS]" << endl << endl
+		<< " Usage: tokenminer [OPTIONS]" << endl << endl
 		<< " Options:" << endl << endl;
 	MinerCLI::streamHelp(cout);
 	cout
@@ -106,7 +106,7 @@ void version()
 {
 	cout
 	<< " " << endl
-	<< " MVis-Ethminer " << dev::Version << endl
+	<< " MVis-tokenminer " << dev::Version << endl
 	<< " =====================================================================" << endl
 	<< " Forked from github.com/Genoil/cpp-ethereum" << endl
 	<< " " << endl;

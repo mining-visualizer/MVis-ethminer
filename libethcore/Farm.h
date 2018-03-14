@@ -187,8 +187,6 @@ public:
 			closeHitThreshold = std::stoull(ProgOpt::Get("CloseHits", "CloseHitThreshold").c_str());
 			workUnitFreq = std::stoull(ProgOpt::Get("CloseHits", "WorkUnitFrequency").c_str());
 		}
-		minerAcct = ProgOpt::Get("0xBitcoin", "MinerAcct");
-		acctPK = ProgOpt::Get("0xBitcoin", "AcctPK");
 	}
 
 	~GenericFarm()
@@ -745,8 +743,10 @@ public:
 	// this will get set true in case of thermal runaway.
 	bool shutDown = false;
 
-	string minerAcct;
-	string acctPK;
+	// with solo mining, the userAcct and the hashingAcct are the same.
+	// with pool mining, the hashingAcct will be the pool ETH address, and
+	// the userAcct will be the user's ETH address. the userAcct is private to FarmClient.h
+	string hashingAcct;		// account used as part of the keccak256_0xBitcoin() function
 
 private:
 	mutable SharedMutex x_minerWork;

@@ -83,14 +83,6 @@ class MinerCLI
 {
 public:
 
-	enum class OperationMode
-	{
-		None,
-		Benchmark,
-		Farm,
-		Stratum
-	};
-
 	typedef struct
 	{
 		string url;
@@ -184,32 +176,6 @@ public:
 		{
 			if (!parseNode(argv[i], argv[++i], m_nodes[1].url, m_nodes[1].rpcPort))
 				exit(-1);
-		}
-		else if ((arg == "-S" || arg == "--stratum-port") && i + 1 < argc)
-		{
-			m_nodes[0].stratumPort = argv[++i];
-			if (!isDigits(m_nodes[0].stratumPort))
-			{
-				LogS << "Invalid " << arg << " option: Numerical port number only!";
-				exit(-1);
-			}
-		}
-		else if ((arg == "-S2" || arg == "--stratum-port2") && i + 1 < argc)
-		{
-			m_nodes[1].stratumPort = argv[++i];
-			if (!isDigits(m_nodes[1].stratumPort))
-			{
-				LogS << "Invalid " << arg << " option: Numerical port number only!";
-				exit(-1);
-			}
-		}
-		else if ((arg == "-P" || arg == "--stratum-pwd") && i + 1 < argc)
-		{
-			m_nodes[0].stratumPwd = argv[++i];
-		}
-		else if ((arg == "-P2" || arg == "--stratum-pwd2") && i + 1 < argc)
-		{
-			m_nodes[1].stratumPwd = argv[++i];
 		}
 		else if ((arg == "-I" || arg == "--polling-interval") && i + 1 < argc)
 			try {
@@ -376,6 +342,10 @@ public:
 			m_minerType = MinerType::CPU;
 		else if (arg == "-G" || arg == "--opencl")
 			m_minerType = MinerType::CL;
+		else if (arg == "-P" || arg == "--opencl")
+			m_opMode = OperationMode::Pool;
+		else if (arg == "-S" || arg == "--opencl")
+			m_opMode = OperationMode::Solo;
 		else if (arg == "-U" || arg == "--cuda")
 		{
 			m_minerType = MinerType::CUDA;
@@ -443,6 +413,11 @@ public:
 		if (m_minerType == MinerType::Undefined)
 		{
 			LogS << "No miner type specfied.  Please include either -C (CPU mining) or -G (OpenCL mining) on the command line";
+			exit(-1);
+		}
+		if (m_opMode == OperationMode::None)
+		{
+			LogS << "Operation mode not specfied.  Please include either -S (solo mining) or -P (pool mining) on the command line";
 			exit(-1);
 		}
 		LogD << " ";
@@ -530,7 +505,6 @@ public:
 		{
 			GenericFarm<EthashProofOfWork> f;
 			f.start(createMiners(m_minerType, &f));
-			mvisRPC = new MVisRPC(f);
 
 			int i = 0;
 			while (true)
@@ -557,8 +531,8 @@ public:
 	{
 		_out
 			<< " Node configuration:" << endl
-			<< "    -N, --node <host:rpc_port>  Host address and RPC port of your node. (default: 127.0.0.1:8545)" << endl
-			<< "    -I, --polling-interval <n>  Check for new work every <n> milliseconds (default: 200). " << endl
+			<< "    -N, --node <host:rpc_port>  Host address and RPC port of your node/mining pool. (default: 127.0.0.1:8545)" << endl
+			<< "    -I, --polling-interval <n>  Check for new work every <n> milliseconds (default: 2000). " << endl
 			<< endl
 			<< " Benchmarking mode:" << endl
 			<< "    -M [<n>],--benchmark [<n>] Benchmark for mining and exit; Optionally specify block number to benchmark" << endl
@@ -568,6 +542,8 @@ public:
 			<< "    --benchmark-trials <n>  Set the number of benchmark tests (default: 5)." << endl
 			<< endl
 			<< " Mining configuration:" << endl
+			<< "    -P  Pool mining" << endl
+			<< "    -S  Solo mining" << endl
 			<< "    -C,--cpu  CPU mining" << endl
 			<< "    -G,--opencl  When mining use the GPU via OpenCL." << endl
 			<< "    --cl-local-work <n> Set the OpenCL local work size. Default is " << toString(ethash_cl_miner::c_defaultLocalWorkSize) << endl
@@ -582,8 +558,8 @@ public:
 			<< "    --cl-extragpu-mem <n> Set the memory (in MB) you believe your GPU requires for stuff other than mining. default: 0" << endl
 			<< endl
 			<< " Miscellaneous Options:" << endl
-			<< "    --config <FileSpec>  - Full path to an INI file containing program options. Windows default: %LocalAppData%/ethminer/ethminer.ini " << endl
-			<< "                           Linux default: $HOME/.config/ethminer/ethminer.ini.  If this option is specified,  it must appear before " << endl
+			<< "    --config <FileSpec>  - Full path to an INI file containing program options. Windows default: %LocalAppData%/tokenminer/tokenminer.ini " << endl
+			<< "                           Linux default: $HOME/.config/tokenminer/tokenminer.ini.  If this option is specified,  it must appear before " << endl
 			<< "                           all others." << endl
 			;
 	}	// streamHelp
@@ -703,12 +679,20 @@ private:
 	/*-----------------------------------------------------------------------------------
 	* positionedOutput
 	*----------------------------------------------------------------------------------*/
-	void positionedOutput(GenericFarm<EthashProofOfWork> &f, Timer lastBlockTime, uint64_t tokenBalance)
+	void positionedOutput(OperationMode _opMode, GenericFarm<EthashProofOfWork> &f, Timer lastBlockTime, uint64_t tokenBalance, 
+						  u256 _difficulty, h256 _target)
 	{
 		f.hashRates().update();
 		LogXY(1, 1) << "Rates:" << f.hashRates() << " | Temp: " << f.getMinerTemps() << " | Fan: " << f.getFanSpeeds() << "         ";
-		LogXY(1, 2) << "Block #: " << f.currentBlock << " | Block time: " << elapsedSeconds(lastBlockTime)
-			<< " | Solutions: " << f.getSolutionStats().getAccepts() << " | Tokens: " << tokenBalance;
+		if (_opMode == OperationMode::Solo)
+		{
+			LogXY(1, 2) << "Block #: " << f.currentBlock << " | Block time: " << elapsedSeconds(lastBlockTime)
+						<< " | Solutions: " << f.getSolutionStats().getAccepts() << " | Tokens: " << tokenBalance;
+		} 
+		else
+		{
+			LogXY(1, 2) << "Difficulty: " << _difficulty << " | Shares: " << f.getSolutionStats().getAccepts() << " | Tokens: " << tokenBalance;
+		}
 	}
 
 
@@ -723,22 +707,38 @@ private:
 		Timer lastGetWork;
 		Timer lastCheckTx;
 
+		int devMining;
+		string sDevPercent = ProgOpt::Get("General", "DevFee", "2.0");
+		sDevPercent = ProgOpt::Get("", "DevFee", "2.0");
+
 		unsigned farmRetries = 0;
 		int maxRetries = failOverAvailable() ? m_maxFarmRetries : c_StopWorkAt;
 		bool connectedToNode = false;
-		string gasPriceBidding = ProgOpt::Get("0xBitcoin", "GasPriceBidding", "0");
+		bool gasPriceBidding = ProgOpt::Get("0xBitcoin", "GasPriceBidding", "0") == "1" && m_opMode == OperationMode::Solo;
 
-		LogS << "Connecting to node at " << _nodeURL + ":" + _rpcPort << " ...";
+		LogS << "Connecting to " << _nodeURL + ":" + _rpcPort << " ...";
+
+		// if solo mining, both workRPC and nodeRPC point to the mainNet node (whatever the user specifies)
+		// if pool mining, workRPC points to the mining pool, and nodeRPC points to Infura
+
 		jsonrpc::HttpClient client(_nodeURL + ":" + _rpcPort);
-		::FarmClient rpc(client);
-		mvisRPC->configNodeRPC(_nodeURL + ":" + _rpcPort);
+		FarmClient workRPC(client, m_opMode);
+
+		jsonrpc::HttpClient* nodeClient;
+		FarmClient* nodeRPC = &workRPC;
+		if (m_opMode == OperationMode::Pool)
+		{
+			nodeClient = new jsonrpc::HttpClient("https://mainnet.infura.io/J9KBwsJ0q1LMIQvzDlGC:8545");
+			nodeRPC = new FarmClient(*nodeClient, OperationMode::Solo);
+		}
 
 		EthashProofOfWork::WorkPackage current, previous;
 		h256 target;
 		bytes challenge;
 		deque<bytes> recentChallenges;
+		u256 difficulty;
 
-		int tokenBalance = rpc.tokenBalance();
+		int tokenBalance = nodeRPC->tokenBalance();
 
 		while (!m_shutdown)
 		{
@@ -750,7 +750,8 @@ private:
 				f.onSolutionFoundToken([&] (h256 nonce, int miner) {
 					solution = nonce;
 					solutionMiner = miner;
-					return solutionFound = true;
+					solutionFound = true;
+					return m_opMode == OperationMode::Solo;
 				});
 
 				while (!solutionFound && !f.shutDown)
@@ -762,7 +763,7 @@ private:
 							int blkNum = 0;
 							try
 							{
-								blkNum = mvisRPC->getBlockNumber() + 1;
+								blkNum = nodeRPC->getBlockNumber() + 1;
 							}
 							catch (...) {}
 							if (blkNum != 0 && blkNum != f.currentBlock)
@@ -770,13 +771,13 @@ private:
 								f.currentBlock = blkNum;
 								lastBlockTime.restart();
 							}
-							positionedOutput(f, lastBlockTime, tokenBalance);
+							positionedOutput(m_opMode, f, lastBlockTime, tokenBalance, difficulty, target);
 							lastHashRateDisplay.restart();
 						}
 					}
 					if (lastBalanceCheck.elapsedSeconds() >= 10)
 					{
-						tokenBalance = rpc.tokenBalance();
+						tokenBalance = nodeRPC->tokenBalance();
 						lastBalanceCheck.restart();
 					}
 
@@ -784,7 +785,10 @@ private:
 					bytes _challenge;
 					if (lastGetWork.elapsedMilliseconds() > m_pollingInterval || !connectedToNode)
 					{
-						rpc.eth_getWork_token(_challenge, _target);
+						if (m_opMode == OperationMode::Pool)
+							workRPC.getWorkPool(_challenge, _target, difficulty, f.hashingAcct);
+						else
+							workRPC.getWorkSolo(_challenge, _target);
 						lastGetWork.restart();
 
 						if (!connectedToNode)
@@ -797,7 +801,7 @@ private:
 						if (_challenge != challenge)
 						{
 							// when queried for the most recent challenge, infura nodes will occasionally respond 
-							// with the one previous.
+							// with the previous one.
 							bool seenBefore = false;
 							for (bytes c : recentChallenges)
 							{
@@ -814,9 +818,9 @@ private:
 								//target = h256(0x0000000080000000);	// easy target for testing
 								//target = (u256) target << 192;
 
-								LogB << "New challenge : " << toHex(_challenge).substr(0, 8);
+								LogS << "New challenge : " << toHex(_challenge).substr(0, 8);
 								f.setWork_token(challenge, target);
-								rpc.setChallenge(challenge);
+								workRPC.setChallenge(challenge);
 
 							}
 						}
@@ -824,9 +828,9 @@ private:
 
 					if (lastCheckTx.elapsedMilliseconds() > 1000)
 					{
-						rpc.checkPendingTransactions();
-						if (gasPriceBidding == "1")
-							rpc.txpoolScanner();
+						nodeRPC->checkPendingTransactions();
+						if (gasPriceBidding)
+							nodeRPC->txpoolScanner();
 						lastCheckTx.restart();
 					}
 
@@ -837,11 +841,12 @@ private:
 					break;
 
 				bytes hash(32);
-				h160 sender(f.minerAcct);
+				h160 sender(f.hashingAcct);
 				keccak256_0xBitcoin(challenge, sender, solution, hash);
 				if (h256(hash) < target) {
-					LogB << "Solution found; Submitting to node ...";
-					bool ok = rpc.eth_submitWorkToken(solution, hash, challenge);
+					string dest = m_opMode == OperationMode::Pool ? "pool ..." : "node ...";
+					LogB << "Solution found; Submitting to " << dest;
+					workRPC.submitWork(solution, hash, challenge);
 					f.solutionFound(SolutionState::Accepted, false, solutionMiner);
 				} else {
 					LogB << "Solution found, but invalid.  Possibly stale.";
@@ -873,8 +878,7 @@ private:
 			}
 		}
 
-		mvisRPC->disconnect("notify");
-		rpc.closeTxFilter();
+		nodeRPC->closeTxFilter();
 
 	}	// doFarm
 
@@ -901,7 +905,7 @@ private:
 		{
 			if (lastHashRateDisplay.elapsedSeconds() >= 2.0 && client.isConnected() && f.isMining())
 			{
-				positionedOutput(f, lastBlockTime, 0);
+				//positionedOutput(f, lastBlockTime, 0);
 				lastHashRateDisplay.restart();
 			}
 			this_thread::sleep_for(chrono::milliseconds(200));
@@ -919,6 +923,7 @@ private:
 
 	/// Mining options
 	MinerType m_minerType = MinerType::Undefined;
+	OperationMode m_opMode = OperationMode::None;
 	unsigned m_openclPlatform = 0;
 	unsigned m_openclDevice = 0;
 	unsigned m_miningThreads = UINT_MAX;
@@ -957,7 +962,7 @@ private:
 	std::vector<node_t> m_nodes;
 
 	unsigned m_maxFarmRetries = 4;
-	unsigned m_pollingInterval = 1000;
+	unsigned m_pollingInterval = 2000;
 	unsigned m_worktimeout = 180;
 	bool m_shutdown = false;
 };

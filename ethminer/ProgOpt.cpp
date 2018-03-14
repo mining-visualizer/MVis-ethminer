@@ -53,7 +53,7 @@ bool ProgOpt::Load(std::string _config)
 	else
 	{
 		path = getAppDataFolder();
-		path = path / "ethminer.ini";
+		path = path / "tokenminer.ini";
 		if (!fs::exists(path))
 		{
 			LogB << "Error! Unable to read program settings from " << path.generic_string();
@@ -66,15 +66,6 @@ bool ProgOpt::Load(std::string _config)
 		
 		// set up sensible defaults for various settings. note that emplace does
 		// not overwrite existing values.
-		m_defaults->emplace("General.NonceGeneration", "Linear");
-		m_defaults->emplace("Kernel.Tech", "CPP");
-
-		m_defaults->emplace("CloseHits.Enabled", "1");
-		m_defaults->emplace("CloseHits.CloseHitThreshold", "0");
-		m_defaults->emplace("CloseHits.WorkUnitFrequency", "600");
-
-		m_defaults->emplace("Network.UdpListen", "5225");
-
 		m_defaults->emplace("ThermalProtection.TempProvider", "amd_adl");
 		m_defaults->emplace("ThermalProtection.ThrottleTemp", "80");
 		m_defaults->emplace("ThermalProtection.ShutDown", "20");
@@ -95,7 +86,7 @@ bool ProgOpt::Load(std::string _config)
 void ProgOpt::SaveToDisk()
 {
 	fs::path path = getAppDataFolder();
-	path = path / "ethminer.ini";
+	path = path / "tokenminer.ini";
 	pt::write_ini(path.string(), *m_tree);
 }
 

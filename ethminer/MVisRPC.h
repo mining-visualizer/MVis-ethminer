@@ -84,7 +84,7 @@ public:
 	void configNodeRPC(string const& _nodeURL)
 	{
 		m_client = new jsonrpc::HttpClient(_nodeURL);
-		m_nodeRpc = new ::FarmClient(*m_client);
+		//m_nodeRpc = new ::FarmClient(*m_client);
 	}
 
 	/*-----------------------------------------------------------------------------------
