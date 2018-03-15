@@ -6,7 +6,7 @@ This is a fork of Genoil's ethminer-0.9.41-genoil-1.x.x, which was a fork of the
 ----------
 
 ### 0xBitcoin
-If you are looking for the 0xBitcoin miner, it's on the [0xBitcoin branch](https://github.com/mining-visualizer/MVis-ethminer/tree/0xbitcoin).  This page is for the regular Ethereum miner.
+If you are looking for the 0xBitcoin miner, please visit https://github.com/mining-visualizer/MVis-tokenminer.
 
 
 ----------
