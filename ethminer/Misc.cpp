@@ -80,7 +80,7 @@ bool getlineEx(std::istream& _is, std::string& _str)
 }
 
 
-// get the path to the app data folder, which is %LocalAppData%\tokenminer on Windows, and HOME/.config/tokenminer elsewhere. 
+// get the path to the app data folder, which is %LocalAppData%\ethminer on Windows, and HOME/.config/ethminer elsewhere. 
 // create necessary folder elements if they don't exist.
 filesystem::path getAppDataFolder(void)
 {
@@ -92,14 +92,14 @@ filesystem::path getAppDataFolder(void)
 	std::wstring local(pszPath);
 	CoTaskMemFree(pszPath);
 
-	filesystem::path s("tokenminer");
+	filesystem::path s("ethminer");
 #else
 	const char *local;
 	if ((local = getenv("HOME")) == NULL)
 	{
 		local = getpwuid(getuid())->pw_dir;
 	}
-	filesystem::path s(".config/tokenminer");
+	filesystem::path s(".config/ethminer");
 #endif
 	s = local / s;
 	if (!filesystem::exists(s))

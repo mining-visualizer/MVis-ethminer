@@ -53,7 +53,7 @@ bool ProgOpt::Load(std::string _config)
 	else
 	{
 		path = getAppDataFolder();
-		path = path / "tokenminer.ini";
+		path = path / "ethminer.ini";
 		if (!fs::exists(path))
 		{
 			LogB << "Error! Unable to read program settings from " << path.generic_string();
@@ -86,7 +86,7 @@ bool ProgOpt::Load(std::string _config)
 void ProgOpt::SaveToDisk()
 {
 	fs::path path = getAppDataFolder();
-	path = path / "tokenminer.ini";
+	path = path / "ethminer.ini";
 	pt::write_ini(path.string(), *m_tree);
 }
 

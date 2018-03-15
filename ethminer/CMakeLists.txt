@@ -20,7 +20,7 @@ if (ETHASHCUDA)
 	include_directories(${CUDA_INCLUDE_DIRS})
 endif ()
 
-set(EXECUTABLE tokenminer)
+set(EXECUTABLE ethminer)
 
 file(GLOB HEADERS "*.h")
 

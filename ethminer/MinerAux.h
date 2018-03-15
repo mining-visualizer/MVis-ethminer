@@ -558,8 +558,8 @@ public:
 			<< "    --cl-extragpu-mem <n> Set the memory (in MB) you believe your GPU requires for stuff other than mining. default: 0" << endl
 			<< endl
 			<< " Miscellaneous Options:" << endl
-			<< "    --config <FileSpec>  - Full path to an INI file containing program options. Windows default: %LocalAppData%/tokenminer/tokenminer.ini " << endl
-			<< "                           Linux default: $HOME/.config/tokenminer/tokenminer.ini.  If this option is specified,  it must appear before " << endl
+			<< "    --config <FileSpec>  - Full path to an INI file containing program options. Windows default: %LocalAppData%/ethminer/ethminer.ini " << endl
+			<< "                           Linux default: $HOME/.config/ethminer/ethminer.ini.  If this option is specified,  it must appear before " << endl
 			<< "                           all others." << endl
 			;
 	}	// streamHelp
